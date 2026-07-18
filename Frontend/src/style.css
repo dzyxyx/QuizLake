@@ -1,0 +1,189 @@
+/* Глобальные стили и CSS-переменные под дизайн из макета Figma.
+   Все компоненты используют эти переменные, чтобы цвета/отступы были едиными. */
+
+:root {
+  --color-primary: #2f5fe0;
+  --color-primary-hover: #2650c4;
+  --color-primary-gradient: linear-gradient(160deg, #3b66e8 0%, #1f3fb0 100%);
+
+  --color-bg: #eef1f8;
+  --color-card: #ffffff;
+  --color-border: #e5e9f2;
+
+  --color-text: #10162b;
+  --color-text-secondary: #8891a4;
+  --color-text-muted: #b0b7c6;
+
+  --color-success-bg: #e2f8ec;
+  --color-success-text: #17a558;
+  --color-warning-bg: #fdecd9;
+  --color-warning-text: #dd8a1c;
+  --color-info-bg: #e5ecfd;
+  --color-info-text: #2f5fe0;
+  --color-danger-bg: #fdeaea;
+  --color-danger-text: #e0453c;
+
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+
+  --shadow-card: 0 1px 3px rgba(16, 22, 43, 0.06), 0 8px 24px rgba(16, 22, 43, 0.04);
+
+  font-family: -apple-system, 'Segoe UI', Roboto, Inter, Arial, sans-serif;
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-size: 15px;
+  line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
+}
+
+#app {
+  min-height: 100vh;
+}
+
+h1,
+h2,
+h3,
+h4,
+p {
+  margin: 0;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  background: none;
+}
+
+input {
+  font-family: inherit;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* Кнопки */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  padding: 12px 20px;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  transition: background 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+}
+
+.btn-primary {
+  background: var(--color-primary);
+  color: #fff;
+}
+.btn-primary:hover {
+  background: var(--color-primary-hover);
+}
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  background: #fff;
+  color: var(--color-text);
+  border-color: var(--color-border);
+}
+.btn-secondary:hover {
+  background: #f7f8fb;
+}
+
+.btn-block {
+  width: 100%;
+}
+
+/* Поля ввода */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+
+.field input,
+.field select,
+.field textarea {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  font-size: 14px;
+  color: var(--color-text);
+  background: #fff;
+  outline: none;
+  width: 100%;
+}
+
+.field input::placeholder,
+.field textarea::placeholder {
+  color: var(--color-text-muted);
+}
+
+.field input:focus,
+.field select:focus,
+.field textarea:focus {
+  border-color: var(--color-primary);
+}
+
+/* Карточка */
+.card {
+  background: var(--color-card);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+}
+
+/* Бейджи-статусы */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.badge-success {
+  background: var(--color-success-bg);
+  color: var(--color-success-text);
+}
+.badge-warning {
+  background: var(--color-warning-bg);
+  color: var(--color-warning-text);
+}
+.badge-info {
+  background: var(--color-info-bg);
+  color: var(--color-info-text);
+}
