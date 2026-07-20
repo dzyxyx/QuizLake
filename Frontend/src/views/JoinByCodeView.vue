@@ -2,18 +2,26 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import AuthLayout from '@/layouts/AuthLayout.vue'
+import { useAuthStore } from '@/stores/auth'
+import { useSessionStore } from '@/stores/session'
+import { ApiError } from '@/api/client'
 
 const router = useRouter()
+const auth = useAuthStore()
+const sessionStore = useSessionStore()
 
-const digits = ref(['', '', '', ''])
+const CODE_LENGTH = 8
+const digits = ref<string[]>(Array(CODE_LENGTH).fill(''))
 const displayName = ref('')
 const inputs = ref<HTMLInputElement[]>([])
+const loading = ref(false)
+const error = ref('')
 
 function onDigitInput(index: number, event: Event) {
   const target = event.target as HTMLInputElement
   const value = target.value.slice(-1).toUpperCase()
   digits.value[index] = value
-  if (value && index < 3) {
+  if (value && index < CODE_LENGTH - 1) {
     inputs.value[index + 1]?.focus()
   }
 }
@@ -24,9 +32,30 @@ function onDigitKeydown(index: number, event: KeyboardEvent) {
   }
 }
 
-function onSubmit() {
-  const code = digits.value.join('')
-  router.push({ name: 'session-waiting', params: { code } })
+async function onSubmit() {
+  error.value = ''
+  const roomCode = digits.value.join('')
+  if (roomCode.length !== CODE_LENGTH) {
+    error.value = `Код должен содержать ${CODE_LENGTH} символов`
+    return
+  }
+
+  const name = displayName.value || auth.user?.nickname
+  if (!name) {
+    error.value = 'Введите имя, под которым вас увидят другие участники'
+    return
+  }
+
+  loading.value = true
+  try {
+    await sessionStore.loadByRoomCode(roomCode)
+    await sessionStore.join(roomCode, name)
+    router.push({ name: 'session-waiting', params: { code: roomCode } })
+  } catch (e) {
+    error.value = e instanceof ApiError ? e.message : 'Не удалось найти комнату с таким кодом'
+  } finally {
+    loading.value = false
+  }
 }
 </script>
 
@@ -64,7 +93,11 @@ function onSubmit() {
         <input v-model="displayName" type="text" placeholder="Отображается для других игроков" />
       </div>
 
-      <button type="submit" class="btn btn-primary btn-block">ПРИСОЕДИНИТЬСЯ</button>
+      <p v-if="error" class="error-text">{{ error }}</p>
+
+      <button type="submit" class="btn btn-primary btn-block" :disabled="loading">
+        {{ loading ? 'Ищем комнату…' : 'ПРИСОЕДИНИТЬСЯ' }}
+      </button>
     </form>
   </AuthLayout>
 </template>
@@ -91,14 +124,14 @@ function onSubmit() {
 }
 .code-row {
   display: flex;
-  gap: 12px;
+  gap: 8px;
   justify-content: center;
 }
 .code-input {
-  width: 56px;
-  height: 56px;
+  width: 38px;
+  height: 52px;
   text-align: center;
-  font-size: 24px;
+  font-size: 20px;
   font-weight: 700;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
@@ -106,5 +139,10 @@ function onSubmit() {
 }
 .code-input:focus {
   border-color: var(--color-primary);
+}
+.error-text {
+  font-size: 13px;
+  color: var(--color-danger-text);
+  text-align: center;
 }
 </style>

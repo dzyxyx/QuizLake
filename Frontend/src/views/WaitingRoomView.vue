@@ -1,69 +1,105 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppLayout from '@/layouts/AppLayout.vue'
+import { useSessionStore } from '@/stores/session'
+import { ApiError } from '@/api/client'
 
 const route = useRoute()
 const router = useRouter()
+const sessionStore = useSessionStore()
 
-const roomCode = ref(String(route.params.code ?? '7K4X').toUpperCase())
+const roomCode = String(route.params.code ?? '').toUpperCase()
+const loading = ref(true)
+const error = ref('')
 
-interface Participant {
-  name: string
-  color: string
-  meta: string
+onMounted(async () => {
+  try {
+    await sessionStore.loadByRoomCode(roomCode)
+  } catch (e) {
+    error.value = e instanceof ApiError ? e.message : 'Комната не найдена'
+  } finally {
+    loading.value = false
+  }
+})
+
+watch(
+  () => sessionStore.currentQuestion,
+  (question) => {
+    if (question) {
+      router.push({ name: 'session-live', params: { code: roomCode } })
+    }
+  },
+)
+
+watch(
+  () => sessionStore.cancelled,
+  (isCancelled) => {
+    if (isCancelled && !sessionStore.isHost) {
+      sessionStore.leave()
+      router.push({ name: 'join' })
+    }
+  },
+)
+
+const participants = computed(() => sessionStore.participants)
+const leaving = ref(false)
+
+async function startQuiz() {
+  error.value = ''
+  try {
+    await sessionStore.nextQuestion()
+  } catch (e) {
+    error.value = e instanceof ApiError ? e.message : 'Не удалось начать квиз'
+  }
 }
 
-const participants = ref<Participant[]>([
-  { name: 'Мария К.', color: '#2563eb', meta: '12 квизов · 3 победы' },
-  { name: 'Даниил С.', color: '#3b82f6', meta: '30 квизов · 9 побед' },
-  { name: 'Анна В.', color: '#2563eb', meta: '6 квизов · 1 победа' },
-  { name: 'Игорь П.', color: '#60a5fa', meta: '18 квизов · 4 победы' },
-  { name: 'Ольга Р.', color: '#2563eb', meta: '9 квизов · 2 победы' },
-  { name: 'Семён Т.', color: '#f59e0b', meta: '4 квиза · 0 побед' },
-  { name: 'Полина М.', color: '#2563eb', meta: '21 квиз · 6 побед' },
-  { name: 'Артём Б.', color: '#3b82f6', meta: '15 квизов · 5 побед' },
-  { name: 'Вера Н.', color: '#2563eb', meta: '3 квиза · 0 побед' },
-  { name: 'Кирилл Д.', color: '#f59e0b', meta: '27 квизов · 8 побед' },
-  { name: 'Юлия Ф.', color: '#2563eb', meta: '11 квизов · 2 победы' },
-])
-
-const extraCount = 3
-
-function startQuiz() {
-  router.push({ name: 'session-live', params: { code: roomCode.value } })
+async function onLeave() {
+  leaving.value = true
+  const wasHost = sessionStore.isHost
+  try {
+    await sessionStore.leaveRoom()
+    router.push(wasHost ? { name: 'dashboard' } : { name: 'join' })
+  } catch (e) {
+    error.value = e instanceof ApiError ? e.message : 'Не удалось выйти из комнаты'
+    leaving.value = false
+  }
 }
 </script>
 
 <template>
   <AppLayout active-item="active-quiz">
-    <div class="layout-row">
+    <div v-if="loading">Загрузка…</div>
+    <p v-else-if="error" class="error-text">{{ error }}</p>
+    <div v-else class="layout-row">
       <div class="card code-card">
         <div class="code-label">Код комнаты</div>
         <div class="code-value">{{ roomCode }}</div>
         <div class="qr-box" />
-        <p class="qr-hint">Отсканируйте QR-код или введите код на quizlake.ru/join</p>
+        <p class="qr-hint">Назовите этот код или продиктуйте его участникам</p>
       </div>
 
       <div class="card participants-card">
         <div class="participants-header">
-          <h1>Участники ({{ participants.length + extraCount }})</h1>
-          <span class="badge badge-success"><span class="dot" />Ожидание старта</span>
-        </div>
-
-        <div class="participants-grid">
-          <div v-for="p in participants" :key="p.name" class="participant">
-            <span class="avatar" :style="{ background: p.color }" />
-            <div class="p-name">{{ p.name }}</div>
-            <div class="p-meta">{{ p.meta }}</div>
-          </div>
-          <div class="participant extra">
-            <span class="avatar extra-avatar" />
-            <div class="p-name">+{{ extraCount }} ещё</div>
+          <h1>Участники ({{ participants.length }})</h1>
+          <div class="header-actions">
+            <span class="badge badge-success"><span class="dot" />Ожидание старта</span>
+            <button class="btn btn-secondary" :disabled="leaving" @click="onLeave">
+              {{ sessionStore.isHost ? 'Отменить квиз' : 'Покинуть комнату' }}
+            </button>
           </div>
         </div>
 
-        <div class="start-row">
+        <div v-if="participants.length" class="participants-grid">
+          <div v-for="p in participants" :key="p.id" class="participant">
+            <span class="avatar" />
+            <div class="p-name">{{ p.display_name }}</div>
+            <div class="p-meta">{{ p.total_score }} очков</div>
+          </div>
+        </div>
+        <p v-else class="empty-hint">Пока никто не присоединился</p>
+
+        <div v-if="sessionStore.isHost" class="start-row">
           <button class="btn btn-primary" @click="startQuiz">▶ НАЧАТЬ КВИЗ</button>
         </div>
       </div>
@@ -128,6 +164,11 @@ function startQuiz() {
   font-size: 20px;
   font-weight: 700;
 }
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
 .badge .dot {
   width: 6px;
   height: 6px;
@@ -154,6 +195,7 @@ function startQuiz() {
   width: 32px;
   height: 32px;
   border-radius: 50%;
+  background: var(--color-primary);
 }
 .p-name {
   font-size: 13px;
@@ -163,17 +205,18 @@ function startQuiz() {
   font-size: 11px;
   color: var(--color-text-secondary);
 }
-.extra-avatar {
-  background: var(--color-border);
-}
-.extra .p-name {
-  color: var(--color-text-secondary);
-  font-weight: 600;
-}
 
 .start-row {
   display: flex;
   justify-content: flex-end;
   margin-top: 28px;
+}
+.empty-hint {
+  color: var(--color-text-secondary);
+  font-size: 14px;
+}
+.error-text {
+  color: var(--color-danger-text);
+  font-size: 14px;
 }
 </style>

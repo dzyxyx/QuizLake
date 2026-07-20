@@ -40,6 +40,12 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
+      path: '/quizzes/:id/edit',
+      name: 'quiz-edit-settings',
+      component: () => import('@/views/CreateQuizSettingsView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
       path: '/quizzes/:id/questions',
       name: 'quiz-add-questions',
       component: () => import('@/views/AddQuestionsView.vue'),

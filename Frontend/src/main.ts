@@ -3,10 +3,19 @@ import { createPinia } from 'pinia'
 import './style.css'
 import App from './App.vue'
 import router from './router'
+import { useAuthStore } from '@/stores/auth'
 
 const app = createApp(App)
 
 app.use(createPinia())
 app.use(router)
+
+useAuthStore().bootstrap()
+
+window.addEventListener('quizlake:auth-expired', () => {
+  if (router.currentRoute.value.meta.requiresAuth) {
+    router.push({ name: 'login' })
+  }
+})
 
 app.mount('#app')

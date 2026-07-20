@@ -1,11 +1,15 @@
 from fastapi import APIRouter, HTTPException, Depends, status
 
-from sqlalchemy import select
+from sqlalchemy import select, func
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.websockets.manager import manager
+
 from app.db.session import get_db
-from app.db.models import QuizSession, User, SessionParticipant
+from app.db.models import QuizSession, User, SessionParticipant, Question
 from app.schemas.quiz_session import QuizSessionCreate, QuizSessionRead
+from app.schemas.question import QuestionRead
 from app.schemas.session_participant import ParticipantRead, ParticipantJoin
 from app.api.deps import get_owned_quiz_or_403, get_current_user, get_current_user_optional, get_session_by_code_or_404, get_session_or_404
 from app.core.security import generate_room_code
@@ -87,7 +91,62 @@ async def join_session(
     await db.commit()
     await db.refresh(new_participant)
 
+    await manager.broadcast(session.id, {
+        "type": "participant_joined",
+        "payload": ParticipantRead.model_validate(new_participant).model_dump(mode="json")
+    })
+
     return new_participant
+
+
+@public_router.delete("/{session_id}/participants/{participant_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def leave_session(session_id: int, participant_id: int, db: AsyncSession = Depends(get_db)):
+    session = await get_session_or_404(session_id, db)
+    if session.status != "waiting":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Нельзя покинуть комнату — игра уже началась",
+        )
+
+    result = await db.execute(
+        select(SessionParticipant).where(
+            SessionParticipant.id == participant_id,
+            SessionParticipant.session_id == session_id,
+        )
+    )
+    participant = result.scalar_one_or_none()
+    if participant is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Участник не найден")
+
+    await db.delete(participant)
+    await db.commit()
+
+    await manager.broadcast(session_id, {
+        "type": "participant_left",
+        "payload": {"participant_id": participant_id},
+    })
+
+
+@public_router.delete("/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def cancel_session(
+    session_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    session = await get_session_or_404(session_id, db)
+
+    if session.host_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Нет доступа")
+    if session.status != "waiting":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Отменить можно только сессию, которая ещё не началась",
+        )
+
+    session.status = "cancelled"
+    await db.commit()
+
+    await manager.broadcast(session_id, {"type": "session_cancelled", "payload": {}})
 
 
 @public_router.get("/{session_id}/participants", response_model=list[ParticipantRead])
@@ -99,3 +158,53 @@ async def get_participants(session_id: int, db: AsyncSession = Depends(get_db)):
     )
 
     return result.scalars().all()
+
+
+@public_router.post("/{session_id}/next-question", response_model=QuestionRead)
+async def next_question(
+    session_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    session = await get_session_or_404(session_id, db)
+
+    if session.host_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Нет доступа")
+
+    if session.status == "finished":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Сессия окончена")
+
+    result = await db.execute(
+        select(Question)
+        .where(Question.quiz_id == session.quiz_id)
+        .order_by(Question.order_index)
+        .options(selectinload(Question.answer_options))
+    )
+    questions = result.scalars().all()
+
+    if session.current_question_id is None:
+        next_q = questions[0]
+    else:
+        idx = next(i for i, q in enumerate(questions) if q.id == session.current_question_id)
+        if idx + 1 >= len(questions):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Вопросы закончились")
+        next_q = questions[idx + 1]
+
+    if session.status == "waiting":
+        session.status = "active"
+        session.started_at = func.now()
+
+    session.current_question_id = next_q.id
+    session.current_question_started_at = func.now()
+
+    await db.commit()
+    await db.refresh(session)
+
+    payload = QuestionRead.model_validate(next_q).model_dump(
+        mode="json",
+        exclude={"answer_options": {"__all__": {"is_correct"}}},
+    )
+
+    await manager.broadcast(session.id, {"type": "new_question", "payload": payload})
+
+    return next_q

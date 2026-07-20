@@ -1,49 +1,80 @@
 <script setup lang="ts">
+import { ref, computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import AppLayout from '@/layouts/AppLayout.vue'
+import { useSessionStore } from '@/stores/session'
+import * as quizzesApi from '@/api/quizzes'
+import type { LeaderboardEntry } from '@/types'
 
-interface Podium {
-  rank: number
-  name: string
-  score: number
-  color: string
-}
+const route = useRoute()
+const sessionStore = useSessionStore()
 
-const podium: Podium[] = [
-  { rank: 2, name: 'Даниил С.', score: 860, color: '#60a5fa' },
-  { rank: 1, name: 'Мария К.', score: 980, color: '#f59e0b' },
-  { rank: 3, name: 'Анна В.', score: 790, color: '#2563eb' },
-]
+const roomCode = String(route.params.code ?? '').toUpperCase()
+const quizTitle = ref('')
+const loading = ref(true)
 
-const rest = [
-  { rank: 4, name: 'Игорь П.', correct: '8 / 10', score: 720 },
-  { rank: 5, name: 'Ольга Р.', correct: '7 / 10', score: 650 },
-]
+onMounted(async () => {
+  if (!sessionStore.session || sessionStore.session.room_code !== roomCode || !sessionStore.finalLeaderboard) {
+    await sessionStore.loadByRoomCode(roomCode)
+  }
+
+  if (sessionStore.session) {
+    try {
+      const quiz = await quizzesApi.getQuiz(sessionStore.session.quiz_id)
+      quizTitle.value = quiz.title
+    } catch {
+      quizTitle.value = ''
+    }
+  }
+  loading.value = false
+})
+
+const leaderboard = computed<LeaderboardEntry[]>(() => {
+  if (sessionStore.finalLeaderboard) return sessionStore.finalLeaderboard
+  return [...sessionStore.participants]
+    .sort((a, b) => (a.final_rank ?? 999) - (b.final_rank ?? 999) || b.total_score - a.total_score)
+    .map((p, i) => ({
+      participant_id: p.id,
+      display_name: p.display_name,
+      total_score: p.total_score,
+      correct_answers_count: p.correct_answers_count,
+      final_rank: p.final_rank ?? i + 1,
+    }))
+})
+
+const podium = computed(() => leaderboard.value.slice(0, 3))
+const rest = computed(() => leaderboard.value.slice(3))
 </script>
 
 <template>
   <AppLayout active-item="active-quiz">
-    <div class="results-page">
-      <p class="eyebrow">История России: XX век · Завершён</p>
+    <div v-if="loading">Загрузка…</div>
+    <div v-else class="results-page">
+      <p class="eyebrow">{{ quizTitle }} · Завершён</p>
       <h1>Результаты квиза</h1>
 
       <div class="podium">
         <div
           v-for="p in podium"
-          :key="p.rank"
+          :key="p.participant_id"
           class="podium-slot"
-          :class="{ winner: p.rank === 1, order2: p.rank === 2, order3: p.rank === 3 }"
+          :class="{
+            winner: p.final_rank === 1,
+            order2: p.final_rank === 2,
+            order3: p.final_rank === 3,
+          }"
         >
-          <span class="avatar" :style="{ background: p.color }" />
-          <div class="p-name">{{ p.name }}</div>
-          <div class="p-score">{{ p.score }} очков</div>
+          <span class="avatar" />
+          <div class="p-name">{{ p.display_name }}</div>
+          <div class="p-score">{{ p.total_score }} очков</div>
           <div class="rank-box">
-            <span v-if="p.rank === 1">🏆</span>
-            {{ p.rank }}
+            <span v-if="p.final_rank === 1">🏆</span>
+            {{ p.final_rank }}
           </div>
         </div>
       </div>
 
-      <div class="card table-card">
+      <div v-if="rest.length" class="card table-card">
         <table>
           <thead>
             <tr>
@@ -54,11 +85,11 @@ const rest = [
             </tr>
           </thead>
           <tbody>
-            <tr v-for="r in rest" :key="r.rank">
-              <td>{{ r.rank }}</td>
-              <td>{{ r.name }}</td>
-              <td>{{ r.correct }}</td>
-              <td class="score-cell">{{ r.score }}</td>
+            <tr v-for="r in rest" :key="r.participant_id">
+              <td>{{ r.final_rank }}</td>
+              <td>{{ r.display_name }}</td>
+              <td>{{ r.correct_answers_count }}</td>
+              <td class="score-cell">{{ r.total_score }}</td>
             </tr>
           </tbody>
         </table>
@@ -105,6 +136,7 @@ h1 {
   width: 64px;
   height: 64px;
   border-radius: 50%;
+  background: var(--color-primary);
 }
 .p-name {
   font-weight: 700;

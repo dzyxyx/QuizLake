@@ -1,30 +1,35 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useQuizzesStore } from '@/stores/quizzes'
-
-// Левое меню, повторяющееся на всех "внутренних" страницах приложения
-// (Мои квизы, Обзор, Профиль, создание квиза, waiting room, результаты).
-// activeItem подсвечивает текущий пункт синим, hasActiveSession — рисует
-// зелёную точку и подсветку у "Активный квиз" (как на макете, когда квиз уже идёт).
+import { useSessionStore } from '@/stores/session'
 
 withDefaults(
   defineProps<{
     activeItem?: 'active-quiz' | 'discover' | 'my-quizzes' | 'profile' | null
-    hasActiveSession?: boolean
     activeDraftId?: number | null
-    showHistory?: boolean
   }>(),
   {
     activeItem: null,
-    hasActiveSession: true,
     activeDraftId: null,
-    showHistory: false,
   },
 )
 
 const auth = useAuthStore()
 const quizzes = useQuizzesStore()
+const sessionStore = useSessionStore()
+
+const hasActiveSession = computed(
+  () => !!sessionStore.session && sessionStore.session.status !== 'finished',
+)
+
+const activeSessionLink = computed(() => {
+  if (!sessionStore.session) return '/join'
+  return sessionStore.session.status === 'waiting'
+    ? `/session/${sessionStore.session.room_code}/waiting`
+    : `/session/${sessionStore.session.room_code}/live`
+})
 </script>
 
 <template>
@@ -36,7 +41,7 @@ const quizzes = useQuizzesStore()
 
     <nav class="nav">
       <RouterLink
-        to="/session/demo/waiting"
+        :to="activeSessionLink"
         class="nav-item"
         :class="{ active: activeItem === 'active-quiz', live: hasActiveSession }"
       >
@@ -53,11 +58,6 @@ const quizzes = useQuizzesStore()
       <RouterLink to="/" class="nav-item" :class="{ active: activeItem === 'my-quizzes' }">
         <span class="nav-icon">▦</span>
         <span class="nav-label">Мои квизы</span>
-      </RouterLink>
-
-      <RouterLink v-if="showHistory" to="/" class="nav-item">
-        <span class="nav-icon">🕒</span>
-        <span class="nav-label">История</span>
       </RouterLink>
 
       <RouterLink to="/profile" class="nav-item" :class="{ active: activeItem === 'profile' }">

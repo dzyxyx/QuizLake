@@ -4,6 +4,7 @@ from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError
 
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
@@ -65,7 +66,9 @@ async def get_question_or_404(
     await get_owned_quiz_or_403(quiz_id, current_user, db)
 
     result = await db.execute(
-        select(Question).where(Question.id == question_id, Question.quiz_id == quiz_id)
+        select(Question)
+        .options(selectinload(Question.answer_options))
+        .where(Question.id == question_id, Question.quiz_id == quiz_id)
     )
     question = result.scalar_one_or_none()
     if question is None:

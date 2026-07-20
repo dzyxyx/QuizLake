@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict
 
 
@@ -7,7 +9,6 @@ class QuizCreate(BaseModel):
     description: str | None = None
     difficulty: str = "medium"
     time_per_question_sec: int = 15
-    points_per_correct: int = 100
     speed_bonus_enabled: bool = False
     show_correct_answer: bool = True
     allow_answer_change: bool = False
@@ -25,7 +26,6 @@ class QuizRead(BaseModel):
     description: str | None = None
     difficulty: str
     time_per_question_sec: int
-    points_per_correct: int
     speed_bonus_enabled: bool
     show_correct_answer: bool
     allow_answer_change: bool
@@ -34,13 +34,25 @@ class QuizRead(BaseModel):
     cover_image_url: str | None = None
 
 
+class DiscoverSessionRead(BaseModel):
+    session_id: int
+    room_code: str
+    quiz_id: int
+    title: str
+    category_name: str | None = None
+    owner_nickname: str
+    status: str
+    scheduled_start_at: datetime | None = None
+    questions_count: int
+    participants_count: int
+
+
 class QuizUpdate(BaseModel):
     category_id: int | None = None
     title: str | None = None
     description: str | None = None
     difficulty: str | None = None
     time_per_question_sec: int | None = None
-    points_per_correct: int | None = None
     speed_bonus_enabled: bool | None = None
     show_correct_answer: bool | None = None
     allow_answer_change: bool | None = None

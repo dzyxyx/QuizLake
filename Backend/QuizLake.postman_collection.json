@@ -1,0 +1,681 @@
+{
+  "info": {
+    "_postman_id": "a1b2c3d4-0000-4000-8000-quizlakecoll",
+    "name": "QuizLake API",
+    "description": "Коллекция для проверки всех эндпоинтов бэкенда QuizLake. Переменные (токены, id квиза/вопроса/сессии, код комнаты, id участников, id правильного варианта) сохраняются автоматически через тест-скрипты после успешных запросов, вручную копировать ничего не нужно.\n\nПорядок прогона (коллекцию можно гонять Runner'ом строго сверху вниз, без пропусков):\nAuth (Register -> Login) -> Categories -> Users -> Quizzes (Create -> Update quiz: set status ready) -> Questions (Create -> Get -> Update) -> Quiz Sessions (Create -> Get discover feed -> Get by code -> Join -> Get participants -> Next question) -> Participant Answers (Submit answer -> Reveal answer -> End game) -> Leave & Cancel session (отдельная вторая сессия, не пересекается с основным потоком) -> WebSocket (см. описание папки, тестируется вручную в отдельной вкладке Postman) -> Cleanup (Delete question -> Delete quiz).\n\nПеред первым прогоном примени миграции (`alembic upgrade head`) — без них список категорий будет пустым, а на квизе останется лишнее поле points_per_correct.\n\nDelete quiz / Delete question вынесены в отдельную папку Cleanup в самом конце коллекции — все остальные папки (Questions, Quiz Sessions, Participant Answers, Leave & Cancel session) используют один и тот же quiz_id, поэтому удалять его раньше нельзя.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:8000/api/v1", "type": "string" },
+    { "key": "ws_url", "value": "ws://localhost:8000/api/v1", "type": "string" },
+    { "key": "access_token", "value": "", "type": "string" },
+    { "key": "refresh_token", "value": "", "type": "string" },
+    { "key": "quiz_id", "value": "", "type": "string" },
+    { "key": "question_id", "value": "", "type": "string" },
+    { "key": "correct_option_id", "value": "", "type": "string" },
+    { "key": "session_id", "value": "", "type": "string" },
+    { "key": "room_code", "value": "", "type": "string" },
+    { "key": "participant_id", "value": "", "type": "string" },
+    { "key": "session_id_2", "value": "", "type": "string" },
+    { "key": "room_code_2", "value": "", "type": "string" },
+    { "key": "participant_id_2", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"first_name\": \"Test\",\n  \"last_name\": \"User\",\n  \"nickname\": \"testuser1\",\n  \"email\": \"test1@example.com\",\n  \"password\": \"secret123\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/register",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "register"]
+            }
+          }
+        },
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const data = pm.response.json();",
+                  "pm.collectionVariables.set(\"access_token\", data.access_token);",
+                  "pm.collectionVariables.set(\"refresh_token\", data.refresh_token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"test1@example.com\",\n  \"password\": \"secret123\",\n  \"remember_me\": true\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "login"]
+            }
+          }
+        },
+        {
+          "name": "Refresh",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const data = pm.response.json();",
+                  "pm.collectionVariables.set(\"access_token\", data.access_token);",
+                  "pm.collectionVariables.set(\"refresh_token\", data.refresh_token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh_token\": \"{{refresh_token}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/refresh",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "refresh"]
+            }
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh_token\": \"{{refresh_token}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/logout",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "logout"]
+            },
+            "description": "Не запускать в середине потока — обнулит refresh_token, а он нужен дальше не будет (access_token из Login продолжит работать до истечения). Оставлено на самый конец."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Categories",
+      "item": [
+        {
+          "name": "Get categories",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/categories",
+              "host": ["{{base_url}}"],
+              "path": ["categories"]
+            },
+            "description": "Должно вернуть 7 сидовых категорий (История, География, Наука и т.д.) — они добавляются миграцией `6f2a9d4b8c31_seed_default_categories`. Если список пустой — примени `alembic upgrade head`."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Users",
+      "item": [
+        {
+          "name": "Get me",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/users/me",
+              "host": ["{{base_url}}"],
+              "path": ["users", "me"]
+            }
+          }
+        },
+        {
+          "name": "Update me",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"first_name\": \"Test (обновлено)\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/users/me",
+              "host": ["{{base_url}}"],
+              "path": ["users", "me"]
+            },
+            "description": "Можно так же прислать nickname/email/avatar_url/password — все поля необязательные (exclude_unset)."
+          }
+        },
+        {
+          "name": "Get my stats",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/users/me/stats",
+              "host": ["{{base_url}}"],
+              "path": ["users", "me", "stats"]
+            },
+            "description": "played/wins/avg_score_percent будут нулевыми, пока не пройдёшь Participant Answers -> End game хотя бы один раз (учитываются только finished-сессии)."
+          }
+        },
+        {
+          "name": "Get participation history",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/users/me/participation-history",
+              "host": ["{{base_url}}"],
+              "path": ["users", "me", "participation-history"]
+            },
+            "description": "Пусто, пока текущий пользователь не сыграл (не был участником) ни в одной finished-сессии."
+          }
+        },
+        {
+          "name": "Get hosted history",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/users/me/hosted-history",
+              "host": ["{{base_url}}"],
+              "path": ["users", "me", "hosted-history"]
+            },
+            "description": "Появится запись после Participant Answers -> End game — там текущий пользователь выступает хостом."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Quizzes",
+      "item": [
+        {
+          "name": "Create quiz",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const data = pm.response.json();",
+                  "pm.collectionVariables.set(\"quiz_id\", data.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Тестовый квиз\",\n  \"description\": \"Проверка эндпоинтов\",\n  \"is_public\": true\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/quizzes",
+              "host": ["{{base_url}}"],
+              "path": ["quizzes"]
+            },
+            "description": "is_public: true — нужно, чтобы созданная позже сессия появилась в Discover-ленте (Quiz Sessions -> Get discover feed)."
+          }
+        },
+        {
+          "name": "Get my quizzes",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/quizzes?status=draft",
+              "host": ["{{base_url}}"],
+              "path": ["quizzes"],
+              "query": [{ "key": "status", "value": "draft", "disabled": true }]
+            }
+          }
+        },
+        {
+          "name": "Get quiz by id",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/quizzes/{{quiz_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["quizzes", "{{quiz_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Update quiz (set status ready)",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"ready\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/quizzes/{{quiz_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["quizzes", "{{quiz_id}}"]
+            },
+            "description": "ВАЖНО: выполнить перед созданием сессии (и обязательно после создания вопросов) — сессию нельзя запустить, пока квиз в статусе draft."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Questions",
+      "item": [
+        {
+          "name": "Create question",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const data = pm.response.json();",
+                  "pm.collectionVariables.set(\"question_id\", data.id);",
+                  "const correct = data.answer_options.find((o) => o.is_correct);",
+                  "if (correct) pm.collectionVariables.set(\"correct_option_id\", correct.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"question_text\": \"Столица Франции?\",\n  \"question_type\": \"single\",\n  \"order_index\": 1,\n  \"time_limit_sec\": 15,\n  \"points\": 100,\n  \"answer_options\": [\n    { \"option_text\": \"Париж\", \"is_correct\": true, \"order_index\": 1 },\n    { \"option_text\": \"Лондон\", \"is_correct\": false, \"order_index\": 2 },\n    { \"option_text\": \"Берлин\", \"is_correct\": false, \"order_index\": 3 }\n  ]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/quizzes/{{quiz_id}}/questions",
+              "host": ["{{base_url}}"],
+              "path": ["quizzes", "{{quiz_id}}", "questions"]
+            },
+            "description": "Тест-скрипт заодно сохраняет correct_option_id (id варианта «Париж») — он нужен дальше для Participant Answers -> Submit answer."
+          }
+        },
+        {
+          "name": "Get questions",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/quizzes/{{quiz_id}}/questions",
+              "host": ["{{base_url}}"],
+              "path": ["quizzes", "{{quiz_id}}", "questions"]
+            }
+          }
+        },
+        {
+          "name": "Update question",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"question_text\": \"Столица Франции (обновлено)?\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/quizzes/{{quiz_id}}/questions/{{question_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["quizzes", "{{quiz_id}}", "questions", "{{question_id}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Quiz Sessions",
+      "item": [
+        {
+          "name": "Create session",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const data = pm.response.json();",
+                  "pm.collectionVariables.set(\"session_id\", data.id);",
+                  "pm.collectionVariables.set(\"room_code\", data.room_code);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"scheduled_start_at\": null\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/quizzes/{{quiz_id}}/sessions",
+              "host": ["{{base_url}}"],
+              "path": ["quizzes", "{{quiz_id}}", "sessions"]
+            },
+            "description": "Требует, чтобы квиз был в статусе ready (см. Quizzes -> Update quiz)."
+          }
+        },
+        {
+          "name": "Get discover feed",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/quizzes/discover",
+              "host": ["{{base_url}}"],
+              "path": ["quizzes", "discover"]
+            },
+            "description": "Публичный эндпоинт (без токена). Должен вернуть только что созданную сессию — квиз публичный (is_public: true) и сессия ещё в статусе waiting. После Participant Answers -> End game эта сессия из ленты пропадёт (status=finished)."
+          }
+        },
+        {
+          "name": "Get session by room code",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/sessions/{{room_code}}",
+              "host": ["{{base_url}}"],
+              "path": ["sessions", "{{room_code}}"]
+            }
+          }
+        },
+        {
+          "name": "Join session (as guest)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const data = pm.response.json();",
+                  "pm.collectionVariables.set(\"participant_id\", data.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"display_name\": \"Гость1\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/sessions/{{room_code}}/join",
+              "host": ["{{base_url}}"],
+              "path": ["sessions", "{{room_code}}", "join"]
+            },
+            "description": "Без заголовка Authorization — проверяет вход гостем (user_id останется NULL). Тест-скрипт сохраняет participant_id — он нужен дальше для Participant Answers -> Submit answer."
+          }
+        },
+        {
+          "name": "Get participants",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/sessions/{{session_id}}/participants",
+              "host": ["{{base_url}}"],
+              "path": ["sessions", "{{session_id}}", "participants"]
+            }
+          }
+        },
+        {
+          "name": "Next question",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/sessions/{{session_id}}/next-question",
+              "host": ["{{base_url}}"],
+              "path": ["sessions", "{{session_id}}", "next-question"]
+            },
+            "description": "Только хост (текущий Bearer-токен). Переводит сессию в status=active и рассылает вопрос по WebSocket (без is_correct). Повторный вызов после единственного вопроса вернёт 400 «Вопросы закончились» — это ожидаемо, дальше используем End game."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Participant Answers",
+      "item": [
+        {
+          "name": "Submit answer",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"selected_option_ids\": [{{correct_option_id}}]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/sessions/{{session_id}}/participants/{{participant_id}}/submit-answer",
+              "host": ["{{base_url}}"],
+              "path": ["sessions", "{{session_id}}", "participants", "{{participant_id}}", "submit-answer"]
+            },
+            "description": "Требует, чтобы Next question уже был вызван (иначе 400 «Нет активного вопроса»). Отправляет правильный вариант — ответ придёт is_correct: true, points_awarded > 0."
+          }
+        },
+        {
+          "name": "Submit answer again (expect 400)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"selected_option_ids\": [{{correct_option_id}}]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/sessions/{{session_id}}/participants/{{participant_id}}/submit-answer",
+              "host": ["{{base_url}}"],
+              "path": ["sessions", "{{session_id}}", "participants", "{{participant_id}}", "submit-answer"]
+            },
+            "description": "Негативный тест: повторный ответ на тот же вопрос тем же участником должен вернуть 400 «Вы уже ответили на этот вопрос»."
+          }
+        },
+        {
+          "name": "Reveal answer",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/sessions/{{session_id}}/reveal-answer",
+              "host": ["{{base_url}}"],
+              "path": ["sessions", "{{session_id}}", "reveal-answer"]
+            },
+            "description": "Только хост. Возвращает correct_option_ids, option_stats (% по каждому варианту) и текущий лидерборд, плюс рассылает это по WebSocket."
+          }
+        },
+        {
+          "name": "End game",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/sessions/{{session_id}}/end-game",
+              "host": ["{{base_url}}"],
+              "path": ["sessions", "{{session_id}}", "end-game"]
+            },
+            "description": "Только хост. Проставляет final_rank участникам, переводит сессию в status=finished. После этого можно повторно проверить Users -> Get my stats / Get hosted history — там появятся данные."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Leave & Cancel session",
+      "item": [
+        {
+          "name": "Create second session",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const data = pm.response.json();",
+                  "pm.collectionVariables.set(\"session_id_2\", data.id);",
+                  "pm.collectionVariables.set(\"room_code_2\", data.room_code);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"scheduled_start_at\": null\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/quizzes/{{quiz_id}}/sessions",
+              "host": ["{{base_url}}"],
+              "path": ["quizzes", "{{quiz_id}}", "sessions"]
+            },
+            "description": "Отдельная сессия для проверки leave/cancel — не пересекается с session_id из основного потока (тот к этому моменту уже finished)."
+          }
+        },
+        {
+          "name": "Join as guest 2",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const data = pm.response.json();",
+                  "pm.collectionVariables.set(\"participant_id_2\", data.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"display_name\": \"Гость2\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/sessions/{{room_code_2}}/join",
+              "host": ["{{base_url}}"],
+              "path": ["sessions", "{{room_code_2}}", "join"]
+            }
+          }
+        },
+        {
+          "name": "Leave session (participant)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "DELETE",
+            "url": {
+              "raw": "{{base_url}}/sessions/{{session_id_2}}/participants/{{participant_id_2}}",
+              "host": ["{{base_url}}"],
+              "path": ["sessions", "{{session_id_2}}", "participants", "{{participant_id_2}}"]
+            },
+            "description": "Публичный эндпоинт — гость покидает комнату сам. Рассылает по WebSocket {\"type\": \"participant_left\"}. Работает только пока сессия в статусе waiting."
+          }
+        },
+        {
+          "name": "Cancel session (host)",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{base_url}}/sessions/{{session_id_2}}",
+              "host": ["{{base_url}}"],
+              "path": ["sessions", "{{session_id_2}}"]
+            },
+            "description": "Только хост. Переводит сессию в status=cancelled и рассылает {\"type\": \"session_cancelled\"} всем подключённым по WebSocket. Тоже только пока сессия waiting."
+          }
+        }
+      ]
+    },
+    {
+      "name": "WebSocket",
+      "item": [
+        {
+          "name": "Читай описание — тестируется вручную",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": {
+              "raw": "{{ws_url}}/ws/sessions/{{session_id}}",
+              "host": ["{{ws_url}}"],
+              "path": ["ws", "sessions", "{{session_id}}"]
+            },
+            "description": "Postman не позволяет надёжно сохранить WebSocket-запрос внутри экспортируемой коллекции во всех версиях приложения, поэтому тут просто заготовка с адресом.\n\nЧтобы проверить: создай новый запрос через New -> WebSocket Request, вставь адрес ws://localhost:8000/api/v1/ws/sessions/{{session_id}} (или .../{{session_id_2}} для проверки participant_left/session_cancelled), нажми Connect. Затем в отдельной вкладке прогони соответствующие запросы:\n- participant_joined -> Quiz Sessions -> Join session\n- new_question -> Quiz Sessions -> Next question\n- participant_answered -> Participant Answers -> Submit answer\n- answer_revealed -> Participant Answers -> Reveal answer\n- game_ended -> Participant Answers -> End game\n- participant_left -> Leave & Cancel session -> Leave session\n- session_cancelled -> Leave & Cancel session -> Cancel session"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Cleanup (запускать в самом конце)",
+      "item": [
+        {
+          "name": "Delete question",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{base_url}}/quizzes/{{quiz_id}}/questions/{{question_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["quizzes", "{{quiz_id}}", "questions", "{{question_id}}"]
+            },
+            "description": "Проверка удаления вопроса напрямую. Запускать только после того, как отработали все остальные папки (Questions, Quiz Sessions, Participant Answers, Leave & Cancel session) — им всем нужен живой вопрос в этом квизе."
+          }
+        },
+        {
+          "name": "Delete quiz",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{base_url}}/quizzes/{{quiz_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["quizzes", "{{quiz_id}}"]
+            },
+            "description": "Удалит квиз вместе с вопросами и сессиями (каскадно). Самый последний запрос во всей коллекции — до него ещё зависят Quiz Sessions, Participant Answers и Leave & Cancel session (все используют один и тот же quiz_id)."
+          }
+        }
+      ]
+    }
+  ]
+}

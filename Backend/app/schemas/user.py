@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel, EmailStr, ConfigDict
 
 
@@ -27,3 +29,26 @@ class UserUpdate(BaseModel):
     email: EmailStr | None = None
     password: str | None = None
     avatar_url: str | None = None
+
+
+class UserStats(BaseModel):
+    played: int
+    wins: int
+    created: int
+    avg_score_percent: int
+
+
+class ParticipationHistoryItem(BaseModel):
+    session_id: int
+    quiz_title: str
+    ended_at: datetime | None = None
+    participants_count: int
+    final_rank: int | None = None
+
+
+class HostedSessionHistoryItem(BaseModel):
+    session_id: int
+    room_code: str
+    quiz_title: str
+    ended_at: datetime | None = None
+    participants_count: int

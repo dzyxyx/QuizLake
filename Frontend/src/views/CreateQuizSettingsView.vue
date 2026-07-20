@@ -1,27 +1,84 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, onMounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import AppLayout from '@/layouts/AppLayout.vue'
 import QuizStepper from '@/components/QuizStepper.vue'
+import { useQuizzesStore } from '@/stores/quizzes'
+import { useCategoriesStore } from '@/stores/categories'
+import type { QuizDifficulty } from '@/types'
+import { ApiError } from '@/api/client'
 
+const route = useRoute()
 const router = useRouter()
+const quizzesStore = useQuizzesStore()
+const categoriesStore = useCategoriesStore()
 
-const title = ref('История России: XX век')
-const category = ref('История')
-const difficulty = ref('Лёгкий')
+const quizId = computed(() => (route.params.id ? Number(route.params.id) : null))
+const isEdit = computed(() => quizId.value !== null)
+
+const title = ref('')
+const description = ref('')
+const categoryId = ref<number | null>(null)
+const difficulty = ref<QuizDifficulty>('medium')
 const timePerQuestion = ref(15)
-const pointsPerCorrect = ref(100)
-const speedBonus = ref(true)
+const speedBonus = ref(false)
 const showCorrectAnswer = ref(true)
 const allowAnswerChange = ref(false)
+const isPublic = ref(false)
 
-function onNext() {
-  router.push({ name: 'quiz-add-questions', params: { id: 1 } })
+const loading = ref(false)
+const error = ref('')
+
+onMounted(async () => {
+  categoriesStore.fetchCategories()
+  if (quizId.value !== null) {
+    const quiz = await quizzesStore.getQuiz(quizId.value)
+    title.value = quiz.title
+    description.value = quiz.description ?? ''
+    categoryId.value = quiz.category_id
+    difficulty.value = quiz.difficulty
+    timePerQuestion.value = quiz.time_per_question_sec
+    speedBonus.value = quiz.speed_bonus_enabled
+    showCorrectAnswer.value = quiz.show_correct_answer
+    allowAnswerChange.value = quiz.allow_answer_change
+    isPublic.value = quiz.is_public
+  }
+})
+
+async function onNext() {
+  error.value = ''
+  loading.value = true
+
+  const payload = {
+    title: title.value,
+    description: description.value || null,
+    category_id: categoryId.value,
+    difficulty: difficulty.value,
+    time_per_question_sec: timePerQuestion.value,
+    speed_bonus_enabled: speedBonus.value,
+    show_correct_answer: showCorrectAnswer.value,
+    allow_answer_change: allowAnswerChange.value,
+    is_public: isPublic.value,
+  }
+
+  try {
+    if (isEdit.value && quizId.value !== null) {
+      await quizzesStore.updateQuiz(quizId.value, payload)
+      router.push({ name: 'quiz-add-questions', params: { id: quizId.value } })
+    } else {
+      const quiz = await quizzesStore.createQuiz(payload)
+      router.push({ name: 'quiz-add-questions', params: { id: quiz.id } })
+    }
+  } catch (e) {
+    error.value = e instanceof ApiError ? e.message : 'Не удалось сохранить квиз'
+  } finally {
+    loading.value = false
+  }
 }
 </script>
 
 <template>
-  <AppLayout active-item="my-quizzes" :active-draft-id="1">
+  <AppLayout active-item="my-quizzes" :active-draft-id="quizId">
     <div class="layout-row">
       <QuizStepper :step="1" />
 
@@ -31,41 +88,40 @@ function onNext() {
         <form class="form" @submit.prevent="onNext">
           <div class="field">
             <label>Название квиза</label>
-            <input v-model="title" type="text" />
+            <input v-model="title" type="text" required />
+          </div>
+
+          <div class="field">
+            <label>Описание (необязательно)</label>
+            <textarea v-model="description" rows="2" />
           </div>
 
           <div class="row-2">
             <div class="field">
               <label>Категория</label>
-              <select v-model="category">
-                <option>История</option>
-                <option>География</option>
-                <option>Наука</option>
-                <option>Кино и сериалы</option>
-                <option>Музыка</option>
-                <option>Спорт</option>
-                <option>Литература</option>
+              <select v-model.number="categoryId">
+                <option :value="null">Без категории</option>
+                <option v-for="c in categoriesStore.categories" :key="c.id" :value="c.id">
+                  {{ c.name }}
+                </option>
               </select>
             </div>
             <div class="field">
               <label>Сложность</label>
               <select v-model="difficulty">
-                <option>Лёгкий</option>
-                <option>Средний</option>
-                <option>Сложный</option>
+                <option value="easy">Лёгкий</option>
+                <option value="medium">Средний</option>
+                <option value="hard">Сложный</option>
               </select>
             </div>
           </div>
 
-          <div class="row-2">
-            <div class="field">
-              <label>Время на вопрос, сек</label>
-              <input v-model.number="timePerQuestion" type="number" min="5" />
-            </div>
-            <div class="field">
-              <label>Баллы за верный ответ</label>
-              <input v-model.number="pointsPerCorrect" type="number" min="0" step="10" />
-            </div>
+          <div class="field">
+            <label>Время на вопрос по умолчанию, сек</label>
+            <input v-model.number="timePerQuestion" type="number" min="5" />
+            <p class="field-hint">
+              Баллы за верный ответ настраиваются отдельно для каждого вопроса на следующем шаге
+            </p>
           </div>
 
           <div class="field">
@@ -82,10 +138,18 @@ function onNext() {
               <input v-model="allowAnswerChange" type="checkbox" />
               Разрешить смену ответа до истечения времени
             </label>
+            <label class="checkbox">
+              <input v-model="isPublic" type="checkbox" />
+              Публичный квиз (виден всем в разделе «Обзор», когда идёт сессия)
+            </label>
           </div>
 
+          <p v-if="error" class="error-text">{{ error }}</p>
+
           <div class="actions">
-            <button type="submit" class="btn btn-primary">ДАЛЕЕ: ДОБАВИТЬ ВОПРОСЫ →</button>
+            <button type="submit" class="btn btn-primary" :disabled="loading">
+              {{ loading ? 'Сохраняем…' : 'ДАЛЕЕ: ДОБАВИТЬ ВОПРОСЫ →' }}
+            </button>
           </div>
         </form>
       </div>
@@ -136,5 +200,13 @@ h1 {
   display: flex;
   justify-content: flex-end;
   margin-top: 8px;
+}
+.error-text {
+  font-size: 13px;
+  color: var(--color-danger-text);
+}
+.field-hint {
+  font-size: 12px;
+  color: var(--color-text-secondary);
 }
 </style>

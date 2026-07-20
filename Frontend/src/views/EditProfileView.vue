@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import AppLayout from '@/layouts/AppLayout.vue'
 import { useAuthStore } from '@/stores/auth'
+import { ApiError } from '@/api/client'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -13,16 +14,38 @@ const nickname = ref(auth.user?.nickname ?? '')
 const email = ref(auth.user?.email ?? '')
 const newPassword = ref('')
 const confirmPassword = ref('')
+const error = ref('')
+const saving = ref(false)
 
 const initials = `${firstName.value[0] ?? ''}${lastName.value[0] ?? ''}`.toUpperCase()
 
-function onSave() {
-  router.push({ name: 'profile' })
+async function onSave() {
+  error.value = ''
+  if (newPassword.value && newPassword.value !== confirmPassword.value) {
+    error.value = 'Пароли не совпадают'
+    return
+  }
+
+  saving.value = true
+  try {
+    await auth.updateProfile({
+      first_name: firstName.value,
+      last_name: lastName.value,
+      nickname: nickname.value,
+      email: email.value,
+      password: newPassword.value || undefined,
+    })
+    router.push({ name: 'profile' })
+  } catch (e) {
+    error.value = e instanceof ApiError ? e.message : 'Не удалось сохранить изменения'
+  } finally {
+    saving.value = false
+  }
 }
 </script>
 
 <template>
-  <AppLayout active-item="profile" show-history>
+  <AppLayout active-item="profile">
     <RouterLink to="/profile" class="back-link">← Профиль</RouterLink>
     <h1 class="page-title">Редактирование профиля</h1>
 
@@ -33,9 +56,7 @@ function onSave() {
           <span class="avatar-big">{{ initials }}</span>
           <span class="camera-badge">📷</span>
         </div>
-        <button type="button" class="btn btn-secondary btn-block">Загрузить фото</button>
-        <a href="#" class="remove-link">Удалить фото</a>
-        <p class="hint">JPG или PNG, минимум 200×200px, до 5 МБ</p>
+        <p class="hint">Загрузка фото профиля пока не поддерживается</p>
       </div>
 
       <div class="card form-card">
@@ -88,9 +109,13 @@ function onSave() {
             </div>
           </div>
 
+          <p v-if="error" class="error-text">{{ error }}</p>
+
           <div class="actions">
             <RouterLink to="/profile" class="btn btn-secondary">Отмена</RouterLink>
-            <button type="submit" class="btn btn-primary">СОХРАНИТЬ ИЗМЕНЕНИЯ</button>
+            <button type="submit" class="btn btn-primary" :disabled="saving">
+              {{ saving ? 'Сохраняем…' : 'СОХРАНИТЬ ИЗМЕНЕНИЯ' }}
+            </button>
           </div>
         </form>
       </div>
@@ -157,11 +182,6 @@ function onSave() {
   justify-content: center;
   font-size: 13px;
 }
-.remove-link {
-  color: var(--color-primary);
-  font-weight: 600;
-  font-size: 13px;
-}
 .hint {
   font-size: 12px;
   color: var(--color-text-secondary);
@@ -202,5 +222,9 @@ function onSave() {
   justify-content: flex-end;
   gap: 12px;
   margin-top: 8px;
+}
+.error-text {
+  font-size: 13px;
+  color: var(--color-danger-text);
 }
 </style>

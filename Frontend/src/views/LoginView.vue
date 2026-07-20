@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import AuthLayout from '@/layouts/AuthLayout.vue'
 import { useAuthStore } from '@/stores/auth'
+import { ApiError } from '@/api/client'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -11,12 +12,16 @@ const email = ref('')
 const password = ref('')
 const rememberMe = ref(true)
 const loading = ref(false)
+const error = ref('')
 
 async function onSubmit() {
   loading.value = true
+  error.value = ''
   try {
-    await auth.login(email.value, password.value)
+    await auth.login(email.value, password.value, rememberMe.value)
     router.push({ name: 'dashboard' })
+  } catch (e) {
+    error.value = e instanceof ApiError ? e.message : 'Не удалось войти. Попробуйте ещё раз.'
   } finally {
     loading.value = false
   }
@@ -49,6 +54,8 @@ async function onSubmit() {
         </label>
         <a href="#" class="link">Забыли пароль?</a>
       </div>
+
+      <p v-if="error" class="error-text">{{ error }}</p>
 
       <button type="submit" class="btn btn-primary btn-block" :disabled="loading">
         {{ loading ? 'Входим…' : 'ВОЙТИ' }}
@@ -105,6 +112,11 @@ async function onSubmit() {
   font-size: 13px;
   color: var(--color-primary);
   font-weight: 600;
+}
+.error-text {
+  font-size: 13px;
+  color: var(--color-danger-text);
+  margin-top: -6px;
 }
 .divider {
   display: flex;

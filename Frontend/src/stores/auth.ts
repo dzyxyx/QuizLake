@@ -1,75 +1,77 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { User } from '@/types'
+import * as authApi from '@/api/auth'
+import * as usersApi from '@/api/users'
+import { setTokens, clearTokens, getAccessToken, getRefreshToken } from '@/api/client'
 
-// Стор авторизации. Пока бэкенда нет, login/register просто подделывают ответ сервера
-// (создают "фейкового" пользователя и токен), чтобы можно было пройти по всем экранам.
-// Когда появится реальный API — поменяется только содержимое функций login/register/logout,
-// остальной код (router, компоненты) трогать не придётся.
+const USER_STORAGE_KEY = 'quizlake_user'
+
+function loadStoredUser(): User | null {
+  const raw = localStorage.getItem(USER_STORAGE_KEY)
+  return raw ? (JSON.parse(raw) as User) : null
+}
 
 export const useAuthStore = defineStore('auth', () => {
-  const token = ref<string | null>(localStorage.getItem('quizlake_token'))
   const user = ref<User | null>(loadStoredUser())
+  const isAuthenticated = computed(() => !!user.value)
+  let bootstrapped = false
 
-  const isAuthenticated = computed(() => !!token.value)
-
-  function loadStoredUser(): User | null {
-    const raw = localStorage.getItem('quizlake_user')
-    return raw ? (JSON.parse(raw) as User) : null
+  function persistUser() {
+    if (user.value) localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user.value))
+    else localStorage.removeItem(USER_STORAGE_KEY)
   }
 
-  function persist() {
-    if (token.value) localStorage.setItem('quizlake_token', token.value)
-    else localStorage.removeItem('quizlake_token')
-
-    if (user.value) localStorage.setItem('quizlake_user', JSON.stringify(user.value))
-    else localStorage.removeItem('quizlake_user')
+  async function login(email: string, password: string, rememberMe: boolean) {
+    const tokens = await authApi.login(email, password, rememberMe)
+    setTokens(tokens.access_token, tokens.refresh_token)
+    user.value = await usersApi.getMe()
+    persistUser()
   }
 
-  async function login(email: string, _password: string) {
-    // TODO: заменить на реальный запрос к /auth/login, когда API будет готов
-    user.value = {
-      id: 1,
-      first_name: 'Мария',
-      last_name: 'Ковалёва',
-      nickname: 'maria_quiz',
-      email,
-      avatar_url: null,
-      is_active: true,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+  async function register(data: authApi.RegisterPayload) {
+    await authApi.register(data)
+    await login(data.email, data.password, true)
+  }
+
+  async function logout() {
+    const refreshToken = getRefreshToken()
+    if (refreshToken) {
+      try {
+        await authApi.logout(refreshToken)
+      } catch {
+      }
     }
-    token.value = 'mock-jwt-token'
-    persist()
-  }
-
-  async function register(data: {
-    firstName: string
-    lastName: string
-    email: string
-    nickname?: string
-  }) {
-    // TODO: заменить на реальный запрос к /auth/register
-    user.value = {
-      id: 1,
-      first_name: data.firstName,
-      last_name: data.lastName,
-      nickname: data.nickname ?? null,
-      email: data.email,
-      avatar_url: null,
-      is_active: true,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    }
-    token.value = 'mock-jwt-token'
-    persist()
-  }
-
-  function logout() {
-    token.value = null
+    clearTokens()
     user.value = null
-    persist()
+    persistUser()
   }
 
-  return { token, user, isAuthenticated, login, register, logout }
+  async function updateProfile(data: usersApi.UpdateMePayload) {
+    user.value = await usersApi.updateMe(data)
+    persistUser()
+    return user.value
+  }
+
+  async function bootstrap() {
+    if (bootstrapped) return
+    bootstrapped = true
+    if (!getAccessToken()) return
+
+    try {
+      user.value = await usersApi.getMe()
+      persistUser()
+    } catch {
+      clearTokens()
+      user.value = null
+      persistUser()
+    }
+  }
+
+  window.addEventListener('quizlake:auth-expired', () => {
+    user.value = null
+    persistUser()
+  })
+
+  return { user, isAuthenticated, login, register, logout, updateProfile, bootstrap }
 })

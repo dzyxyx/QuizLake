@@ -1,10 +1,15 @@
 <script setup lang="ts">
+import { onMounted } from 'vue'
 import AppLayout from '@/layouts/AppLayout.vue'
 import { useAuthStore } from '@/stores/auth'
-import { useQuizzesStore } from '@/stores/quizzes'
+import { useProfileStore } from '@/stores/profile'
 
 const auth = useAuthStore()
-const quizzes = useQuizzesStore()
+const profile = useProfileStore()
+
+onMounted(() => {
+  profile.fetchAll()
+})
 
 const rankBadge: Record<number, string> = {
   1: 'badge-success',
@@ -12,19 +17,10 @@ const rankBadge: Record<number, string> = {
   3: 'badge-warning',
 }
 
-const participationHistory = [
-  { title: 'История России: XX век', date: '12 июля 2026', participants: 14, rank: 2 },
-  { title: 'Мир кино: угадай кадр', date: '3 июля 2026', participants: 22, rank: 1 },
-  { title: 'География: столицы мира', date: '28 июня 2026', participants: 9, rank: 4 },
-  { title: 'Наука для всех', date: '15 июня 2026', participants: 17, rank: 3 },
-]
-
-const hostedQuizzes = [
-  { title: 'История России: XX век', date: '22 июля 2025', participants: 18 },
-  { title: 'Мир кино: угадай кадр', date: '3 июля 2026', participants: 22 },
-  { title: 'География: столицы мира', date: '28 июня 2026', participants: 9 },
-  { title: 'Наука для всех', date: '15 июня 2026', participants: 17 },
-]
+function formatDate(value: string | null): string {
+  if (!value) return '—'
+  return new Date(value).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })
+}
 </script>
 
 <template>
@@ -33,24 +29,24 @@ const hostedQuizzes = [
       <div class="card profile-card">
         <span class="avatar-big" />
         <h1>{{ auth.user?.first_name }} {{ auth.user?.last_name }}</h1>
-        <p class="since">С апреля 2025</p>
+        <p class="since">@{{ auth.user?.nickname }}</p>
 
         <div class="stats-list">
           <div class="stat-row">
             <span>Сыграно квизов</span>
-            <strong>{{ quizzes.stats.played }}</strong>
+            <strong>{{ profile.stats.played }}</strong>
           </div>
           <div class="stat-row">
             <span>Побед</span>
-            <strong>{{ quizzes.stats.wins }}</strong>
+            <strong>{{ profile.stats.wins }}</strong>
           </div>
           <div class="stat-row">
             <span>Создано квизов</span>
-            <strong>{{ quizzes.stats.created }}</strong>
+            <strong>{{ profile.stats.created }}</strong>
           </div>
           <div class="stat-row">
             <span>Средний результат</span>
-            <strong>78%</strong>
+            <strong>{{ profile.stats.avg_score_percent }}%</strong>
           </div>
         </div>
 
@@ -62,26 +58,47 @@ const hostedQuizzes = [
       <div class="right-col">
         <div class="card list-card">
           <h2>История участия</h2>
-          <div v-for="item in participationHistory" :key="item.title" class="list-row">
+          <div
+            v-for="item in profile.participationHistory"
+            :key="item.session_id"
+            class="list-row"
+          >
             <div>
-              <div class="row-title">{{ item.title }}</div>
-              <div class="row-meta">{{ item.date }} · {{ item.participants }} участников</div>
+              <div class="row-title">{{ item.quiz_title }}</div>
+              <div class="row-meta">
+                {{ formatDate(item.ended_at) }} · {{ item.participants_count }} участников
+              </div>
             </div>
-            <span class="badge" :class="rankBadge[item.rank] ?? 'badge-info'">
-              🏅 {{ item.rank }} место
+            <span
+              v-if="item.final_rank"
+              class="badge"
+              :class="rankBadge[item.final_rank] ?? 'badge-info'"
+            >
+              🏅 {{ item.final_rank }} место
             </span>
           </div>
+          <p v-if="!profile.participationHistory.length" class="empty-hint">
+            Пока нет сыгранных квизов
+          </p>
         </div>
 
         <div class="card list-card">
           <h2>Проведённые квизы</h2>
-          <div v-for="item in hostedQuizzes" :key="item.title" class="list-row">
+          <div v-for="item in profile.hostedHistory" :key="item.session_id" class="list-row">
             <div>
-              <div class="row-title">{{ item.title }}</div>
-              <div class="row-meta">{{ item.date }} · {{ item.participants }} участников</div>
+              <div class="row-title">{{ item.quiz_title }}</div>
+              <div class="row-meta">
+                {{ formatDate(item.ended_at) }} · {{ item.participants_count }} участников
+              </div>
             </div>
-            <button class="btn btn-primary small">Показать итоги</button>
+            <RouterLink
+              :to="{ name: 'session-results', params: { code: item.room_code } }"
+              class="btn btn-primary small"
+            >
+              Показать итоги
+            </RouterLink>
           </div>
+          <p v-if="!profile.hostedHistory.length" class="empty-hint">Пока нет проведённых квизов</p>
         </div>
       </div>
     </div>
@@ -173,5 +190,10 @@ const hostedQuizzes = [
 .btn.small {
   padding: 8px 16px;
   font-size: 12px;
+}
+.empty-hint {
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  padding: 8px 0;
 }
 </style>

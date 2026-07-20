@@ -1,11 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.db.models import Quiz, User
-from app.schemas.quiz import QuizCreate, QuizRead, QuizUpdate
+from app.db.models import Quiz, User, QuizSession, Question, SessionParticipant, Category
+from app.schemas.quiz import QuizCreate, QuizRead, QuizUpdate, DiscoverSessionRead
 from app.api.deps import get_current_user, get_current_user_optional, get_quiz_or_404, get_owned_quiz_or_403
 
 
@@ -42,6 +42,45 @@ async def get_quizzes(
     quizzes = result.scalars().all()
 
     return quizzes
+
+
+@router.get("/discover", response_model=list[DiscoverSessionRead])
+async def discover_sessions(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(QuizSession, Quiz, User.nickname, Category.name)
+        .join(Quiz, QuizSession.quiz_id == Quiz.id)
+        .join(User, QuizSession.host_id == User.id)
+        .outerjoin(Category, Quiz.category_id == Category.id)
+        .where(Quiz.is_public.is_(True), QuizSession.status.in_(["waiting", "active"]))
+        .order_by(QuizSession.created_at.desc())
+    )
+    rows = result.all()
+
+    items = []
+    for session, quiz, owner_nickname, category_name in rows:
+        questions_count = await db.scalar(
+            select(func.count()).select_from(Question).where(Question.quiz_id == quiz.id)
+        )
+        participants_count = await db.scalar(
+            select(func.count())
+            .select_from(SessionParticipant)
+            .where(SessionParticipant.session_id == session.id)
+        )
+        items.append(
+            DiscoverSessionRead(
+                session_id=session.id,
+                room_code=session.room_code,
+                quiz_id=quiz.id,
+                title=quiz.title,
+                category_name=category_name,
+                owner_nickname=owner_nickname,
+                status=session.status,
+                scheduled_start_at=session.scheduled_start_at,
+                questions_count=questions_count or 0,
+                participants_count=participants_count or 0,
+            )
+        )
+    return items
 
 
 @router.get("/{quiz_id}", response_model=QuizRead)

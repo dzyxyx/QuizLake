@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import AuthLayout from '@/layouts/AuthLayout.vue'
 import { useAuthStore } from '@/stores/auth'
+import { ApiError } from '@/api/client'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -15,17 +16,27 @@ const password = ref('')
 const passwordConfirm = ref('')
 const agree = ref(false)
 const loading = ref(false)
+const error = ref('')
 
 async function onSubmit() {
+  error.value = ''
+  if (password.value !== passwordConfirm.value) {
+    error.value = 'Пароли не совпадают'
+    return
+  }
+
   loading.value = true
   try {
     await auth.register({
-      firstName: firstName.value,
-      lastName: lastName.value,
+      first_name: firstName.value,
+      last_name: lastName.value,
       email: email.value,
-      nickname: nickname.value || undefined,
+      nickname: nickname.value,
+      password: password.value,
     })
     router.push({ name: 'dashboard' })
+  } catch (e) {
+    error.value = e instanceof ApiError ? e.message : 'Не удалось зарегистрироваться. Попробуйте ещё раз.'
   } finally {
     loading.value = false
   }
@@ -66,8 +77,13 @@ async function onSubmit() {
       </div>
 
       <div class="field">
-        <label>Псевдоним (по желанию)</label>
-        <input v-model="nickname" type="text" placeholder="Будет отображаться другим участникам" />
+        <label>Псевдоним</label>
+        <input
+          v-model="nickname"
+          type="text"
+          placeholder="Будет отображаться другим участникам"
+          required
+        />
       </div>
 
       <div class="row-2">
@@ -85,6 +101,8 @@ async function onSubmit() {
         <input v-model="agree" type="checkbox" required />
         Согласен с условиями использования
       </label>
+
+      <p v-if="error" class="error-text">{{ error }}</p>
 
       <button type="submit" class="btn btn-primary btn-block" :disabled="loading">
         {{ loading ? 'Создаём…' : 'ЗАРЕГИСТРИРОВАТЬСЯ' }}
@@ -138,6 +156,11 @@ async function onSubmit() {
 .link-strong {
   color: var(--color-primary);
   font-weight: 700;
+}
+.error-text {
+  font-size: 13px;
+  color: var(--color-danger-text);
+  margin-top: -6px;
 }
 
 .steps {

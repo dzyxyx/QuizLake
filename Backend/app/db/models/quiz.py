@@ -28,7 +28,6 @@ class Quiz(Base, CreatedAtMixin, UpdatedAtMixin):
     description: Mapped[str | None] = mapped_column(Text)
     difficulty: Mapped[str] = mapped_column(String(50), default=Difficulty.MEDIUM)
     time_per_question_sec: Mapped[int] = mapped_column(SmallInteger, default=15)
-    points_per_correct: Mapped[int] = mapped_column(SmallInteger, default=100)
     speed_bonus_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     show_correct_answer: Mapped[bool] = mapped_column(Boolean, default=True)
     allow_answer_change: Mapped[bool] = mapped_column(Boolean, default=False)

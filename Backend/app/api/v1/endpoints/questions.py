@@ -1,6 +1,8 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
@@ -24,13 +26,21 @@ async def create_question(
     question_dict = question_data.model_dump(exclude={"answer_options"})
     new_question = Question(**question_dict, quiz_id=quiz_id)
     db.add(new_question)
-    await db.flush()
+
+    try:
+        await db.flush()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Вопрос с таким порядковым номером уже существует в этом квизе",
+        )
 
     for option_data in question_data.answer_options:
         db.add(AnswerOption(**option_data.model_dump(), question_id=new_question.id))
 
     await db.commit()
-    await db.refresh(new_question)
+    await db.refresh(new_question, attribute_names=["answer_options"])
     return new_question
 
 
@@ -42,7 +52,12 @@ async def get_questions(
 ):
     await get_owned_quiz_or_403(quiz_id, current_user, db)
 
-    query = select(Question).where(Question.quiz_id == quiz_id).order_by(Question.order_index)
+    query = (
+        select(Question)
+        .where(Question.quiz_id == quiz_id)
+        .order_by(Question.order_index)
+        .options(selectinload(Question.answer_options))
+    )
     result = await db.execute(query)
 
     questions = result.scalars().all()
@@ -71,7 +86,7 @@ async def update_question(
             db.add(AnswerOption(**option_data.model_dump(), question_id=question.id))
 
     await db.commit()
-    await db.refresh(question)
+    await db.refresh(question, attribute_names=["answer_options"])
 
     return question
 

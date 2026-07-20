@@ -1,12 +1,23 @@
 <script setup lang="ts">
-import type { MyQuizCard } from '@/stores/quizzes'
+import type { Quiz } from '@/types'
 
-defineProps<{ quiz: MyQuizCard }>()
+defineProps<{ quiz: Quiz }>()
 
-const statusClass: Record<MyQuizCard['status'], string> = {
-  ready: 'badge-success',
+const emit = defineEmits<{
+  edit: [quizId: number]
+  publish: [quizId: number]
+  launch: [quizId: number]
+}>()
+
+const statusLabel: Record<Quiz['status'], string> = {
+  draft: 'Черновик',
+  ready: 'Готов к запуску',
+  archived: 'В архиве',
+}
+const statusClass: Record<Quiz['status'], string> = {
   draft: 'badge-warning',
-  finished: 'badge-info',
+  ready: 'badge-success',
+  archived: 'badge-info',
 }
 </script>
 
@@ -14,23 +25,24 @@ const statusClass: Record<MyQuizCard['status'], string> = {
   <div class="card quiz-card">
     <span class="badge" :class="statusClass[quiz.status]">
       <span class="dot" />
-      {{ quiz.statusLabel }}
+      {{ statusLabel[quiz.status] }}
     </span>
 
     <h3 class="quiz-title">{{ quiz.title }}</h3>
-    <p class="quiz-meta">{{ quiz.questionsCount }} вопросов · {{ quiz.meta }}</p>
+    <p class="quiz-meta">{{ quiz.time_per_question_sec }} сек/вопрос</p>
 
     <div class="actions">
-      <template v-if="quiz.status === 'finished'">
-        <button class="btn btn-secondary">Результаты</button>
-        <button class="btn btn-primary">Копия</button>
-      </template>
-      <template v-else>
-        <button class="btn btn-secondary">Изменить</button>
-        <button class="btn" :class="quiz.status === 'ready' ? 'btn-primary' : 'btn-secondary'">
-          Запустить
-        </button>
-      </template>
+      <button class="btn btn-secondary" @click="emit('edit', quiz.id)">Изменить</button>
+      <button
+        v-if="quiz.status === 'draft'"
+        class="btn btn-primary"
+        @click="emit('publish', quiz.id)"
+      >
+        Опубликовать
+      </button>
+      <button v-else-if="quiz.status === 'ready'" class="btn btn-primary" @click="emit('launch', quiz.id)">
+        Запустить
+      </button>
     </div>
   </div>
 </template>

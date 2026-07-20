@@ -1,56 +1,131 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useSessionStore } from '@/stores/session'
+import { useAuthStore } from '@/stores/auth'
+import { ApiError } from '@/api/client'
+import type { AnswerResult } from '@/types'
 
 const route = useRoute()
 const router = useRouter()
+const sessionStore = useSessionStore()
+const auth = useAuthStore()
 
-interface Option {
-  label: string
-  text: string
-  percent: number
-  isCorrect: boolean
-}
+const roomCode = String(route.params.code ?? '').toUpperCase()
 
-const questionNumber = 3
-const totalQuestions = 10
-const yourRank = 2
+const selectedOptionIds = ref<number[]>([])
+const hasAnswered = ref(false)
+const lastAnswerResult = ref<AnswerResult | null>(null)
+const submitError = ref('')
+const nextError = ref('')
 
-const options = ref<Option[]>([
-  { label: 'A', text: 'Нил', percent: 8, isCorrect: false },
-  { label: 'B', text: 'Амазонка', percent: 61, isCorrect: true },
-  { label: 'C', text: 'Янцзы', percent: 19, isCorrect: false },
-  { label: 'D', text: 'Миссисипи', percent: 12, isCorrect: false },
-])
+onMounted(async () => {
+  if (!sessionStore.session || sessionStore.session.room_code !== roomCode) {
+    await sessionStore.loadByRoomCode(roomCode)
+  }
+})
 
-const selectedLabel = ref<string | null>('B')
-const secondsLeft = ref(9)
-const revealed = ref(false)
-let timer: number | undefined
-
+const now = ref(Date.now())
+let tickTimer: number | undefined
 onMounted(() => {
-  timer = window.setInterval(() => {
-    if (secondsLeft.value > 0) {
-      secondsLeft.value -= 1
-    } else {
-      revealed.value = true
-      clearInterval(timer)
-    }
-  }, 1000)
+  tickTimer = window.setInterval(() => {
+    now.value = Date.now()
+  }, 500)
 })
 onUnmounted(() => {
-  if (timer) clearInterval(timer)
+  if (tickTimer) window.clearInterval(tickTimer)
 })
 
-function selectOption(label: string) {
-  if (revealed.value) return
-  selectedLabel.value = label
+const question = computed(() => sessionStore.currentQuestion)
+
+const secondsLeft = computed(() => {
+  const q = question.value
+  if (!q || q.time_limit_sec == null || !sessionStore.questionStartedAt) return null
+  const elapsed = (now.value - new Date(sessionStore.questionStartedAt).getTime()) / 1000
+  return Math.max(0, Math.ceil(q.time_limit_sec - elapsed))
+})
+
+const optionLabels = ['A', 'B', 'C', 'D', 'E', 'F']
+
+function optionStat(optionId: number) {
+  return sessionStore.reveal?.option_stats.find((s) => s.option_id === optionId) ?? null
 }
 
-const correctOption = computed(() => options.value.find((o) => o.isCorrect))
+function isCorrectOption(optionId: number) {
+  return sessionStore.reveal?.correct_option_ids.includes(optionId) ?? false
+}
+
+function toggleOption(optionId: number) {
+  if (hasAnswered.value || sessionStore.reveal || !question.value) return
+
+  if (question.value.question_type === 'single') {
+    selectedOptionIds.value = [optionId]
+    submitSelected()
+    return
+  }
+
+  const idx = selectedOptionIds.value.indexOf(optionId)
+  if (idx === -1) selectedOptionIds.value.push(optionId)
+  else selectedOptionIds.value.splice(idx, 1)
+}
+
+async function submitSelected() {
+  if (selectedOptionIds.value.length === 0) return
+  submitError.value = ''
+  try {
+    lastAnswerResult.value = await sessionStore.submitAnswer(selectedOptionIds.value)
+    hasAnswered.value = true
+  } catch (e) {
+    submitError.value = e instanceof ApiError ? e.message : 'Не удалось отправить ответ'
+  }
+}
+
+watch(question, () => {
+  selectedOptionIds.value = []
+  hasAnswered.value = false
+  lastAnswerResult.value = null
+  submitError.value = ''
+  nextError.value = ''
+})
+
+watch(secondsLeft, (value) => {
+  if (sessionStore.isHost && value === 0 && !sessionStore.reveal) {
+    sessionStore.revealAnswer().catch(() => {})
+  }
+})
+
+watch(
+  () => sessionStore.finalLeaderboard,
+  (leaderboard) => {
+    if (leaderboard) {
+      router.push({ name: 'session-results', params: { code: roomCode } })
+    }
+  },
+)
+
+async function onReveal() {
+  await sessionStore.revealAnswer()
+}
+
+async function onNext() {
+  nextError.value = ''
+  try {
+    await sessionStore.nextQuestion()
+  } catch (e) {
+    nextError.value =
+      e instanceof ApiError && e.status === 400
+        ? 'Вопросы закончились — нажмите «Завершить игру»'
+        : 'Не удалось перейти к следующему вопросу'
+  }
+}
+
+async function onEndGame() {
+  await sessionStore.endGame()
+}
 
 function close() {
-  router.push({ name: 'session-results', params: { code: route.params.code } })
+  sessionStore.leave()
+  router.push(auth.isAuthenticated ? { name: 'dashboard' } : { name: 'login' })
 }
 </script>
 
@@ -62,60 +137,95 @@ function close() {
     </aside>
 
     <main class="live-content">
-      <div class="top-row">
-        <span class="badge badge-info">Вопрос {{ questionNumber }} из {{ totalQuestions }}</span>
+      <div v-if="!question">Ожидаем вопрос…</div>
+      <template v-else>
+        <div class="top-row">
+          <span class="badge badge-info">Вопрос {{ question.order_index }}</span>
 
-        <div v-if="!revealed" class="timer-circle">{{ String(secondsLeft).padStart(2, '0') }}</div>
-        <span v-else class="badge badge-success">Время вышло · показаны результаты</span>
+          <div v-if="secondsLeft !== null && !sessionStore.reveal" class="timer-circle">
+            {{ String(secondsLeft).padStart(2, '0') }}
+          </div>
+          <span v-else-if="sessionStore.reveal" class="badge badge-success">Ответ показан</span>
 
-        <span class="badge badge-warning">🏆 Ваше место: {{ yourRank }}</span>
-      </div>
+          <span v-if="sessionStore.answeredCount" class="badge badge-warning">
+            Ответили: {{ sessionStore.answeredCount.answered }} / {{ sessionStore.answeredCount.total }}
+          </span>
+        </div>
 
-      <div class="card question-card">
-        <h1>Какая река является самой длинной в мире?</h1>
+        <div class="card question-card">
+          <h1>{{ question.question_text }}</h1>
 
-        <div v-if="!revealed" class="image-placeholder">🖼 изображение к вопросу</div>
+          <img v-if="question.image_url" :src="question.image_url" class="question-image" alt="" />
 
-        <div class="options" :class="{ revealed }">
-          <button
-            v-for="opt in options"
-            :key="opt.label"
-            class="option"
-            :class="{
-              selected: !revealed && selectedLabel === opt.label,
-              correct: revealed && opt.isCorrect,
-              wrong: revealed && !opt.isCorrect,
-            }"
-            @click="selectOption(opt.label)"
-          >
-            <div v-if="revealed" class="fill-bar" :style="{ width: opt.percent + '%' }" />
-            <span class="option-content">
-              <span class="option-label">
-                <span v-if="revealed && opt.isCorrect">✓</span>
-                {{ opt.label }} · {{ opt.text }}
+          <div class="options" :class="{ revealed: sessionStore.reveal }">
+            <button
+              v-for="(opt, i) in question.answer_options"
+              :key="opt.id"
+              class="option"
+              :class="{
+                selected: !sessionStore.reveal && selectedOptionIds.includes(opt.id),
+                correct: sessionStore.reveal && isCorrectOption(opt.id),
+                wrong:
+                  sessionStore.reveal && !isCorrectOption(opt.id) && selectedOptionIds.includes(opt.id),
+              }"
+              :disabled="sessionStore.isHost || hasAnswered || !!sessionStore.reveal"
+              @click="toggleOption(opt.id)"
+            >
+              <div
+                v-if="sessionStore.reveal"
+                class="fill-bar"
+                :style="{ width: (optionStat(opt.id)?.selected_percent ?? 0) + '%' }"
+              />
+              <span class="option-content">
+                <span class="option-label">
+                  <span v-if="sessionStore.reveal && isCorrectOption(opt.id)">✓</span>
+                  {{ optionLabels[i] }} · {{ opt.option_text }}
+                </span>
+                <span v-if="sessionStore.reveal && selectedOptionIds.includes(opt.id)" class="your-answer-badge">
+                  ✓ Ваш ответ
+                </span>
               </span>
-              <span v-if="revealed && selectedLabel === opt.label" class="your-answer-badge"
-                >✓ Ваш ответ</span
-              >
-            </span>
-            <span v-if="revealed" class="percent">{{ opt.percent }}%</span>
-            <span v-else-if="selectedLabel === opt.label" class="check-badge">✓</span>
+              <span v-if="sessionStore.reveal" class="percent">{{ optionStat(opt.id)?.selected_percent ?? 0 }}%</span>
+            </button>
+          </div>
+
+          <button
+            v-if="question.question_type === 'multiple' && !hasAnswered && !sessionStore.reveal && !sessionStore.isHost"
+            class="btn btn-primary btn-block"
+            @click="submitSelected"
+          >
+            Ответить
           </button>
+
+          <p v-if="submitError" class="error-text">{{ submitError }}</p>
+
+          <p v-if="!sessionStore.reveal && hasAnswered" class="footer-hint">
+            Ответ принят — ожидайте окончания времени на вопрос
+          </p>
+          <p v-else-if="!sessionStore.reveal && !hasAnswered && !sessionStore.isHost" class="footer-hint">
+            Выберите ответ
+          </p>
         </div>
 
-        <p v-if="!revealed" class="footer-hint">
-          Ответ принят — ожидайте окончания времени на вопрос
-        </p>
-        <p v-else class="footer-hint">Правильный ответ — {{ correctOption?.text }}.</p>
-      </div>
-
-      <div v-if="revealed" class="score-toast">
-        <span class="score-icon">✓</span>
-        <div>
-          <div class="score-value">+100 очков</div>
-          <div class="score-label">Ответ верный!</div>
+        <div v-if="lastAnswerResult" class="score-toast">
+          <span class="score-icon">{{ lastAnswerResult.is_correct ? '✓' : '✕' }}</span>
+          <div>
+            <div class="score-value">+{{ lastAnswerResult.points_awarded }} очков</div>
+            <div class="score-label">{{ lastAnswerResult.is_correct ? 'Ответ верный!' : 'Ответ неверный' }}</div>
+          </div>
         </div>
-      </div>
+
+        <div v-if="sessionStore.isHost" class="host-controls">
+          <button v-if="!sessionStore.reveal" class="btn btn-secondary" @click="onReveal">
+            Показать ответ
+          </button>
+          <template v-else>
+            <button class="btn btn-secondary" @click="onNext">Следующий вопрос</button>
+            <button class="btn btn-primary" @click="onEndGame">Завершить игру</button>
+          </template>
+          <p v-if="nextError" class="error-text">{{ nextError }}</p>
+        </div>
+      </template>
     </main>
   </div>
 </template>
@@ -168,6 +278,7 @@ function close() {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
   margin-bottom: 28px;
 }
 
@@ -197,17 +308,11 @@ function close() {
   font-weight: 700;
   text-align: center;
 }
-
-.image-placeholder {
-  height: 180px;
+.question-image {
+  max-height: 220px;
+  width: 100%;
+  object-fit: contain;
   border-radius: var(--radius-sm);
-  background: #f5f7fb;
-  border: 1px dashed var(--color-border);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--color-text-muted);
-  font-size: 13px;
 }
 
 .options {
@@ -229,15 +334,15 @@ function close() {
   justify-content: space-between;
   background: #fff;
 }
+.option:disabled {
+  cursor: default;
+}
 .option.selected {
   border-color: var(--color-primary);
 }
 .option.correct {
   border-color: var(--color-success-text);
   background: var(--color-success-bg);
-}
-.option.wrong {
-  background: #fff;
 }
 .fill-bar {
   position: absolute;
@@ -271,25 +376,16 @@ function close() {
   z-index: 1;
   font-weight: 700;
 }
-.check-badge {
-  position: absolute;
-  top: -6px;
-  right: -6px;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  background: var(--color-primary);
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 11px;
-}
 
 .footer-hint {
   text-align: center;
   font-size: 13px;
   color: var(--color-text-secondary);
+}
+.error-text {
+  text-align: center;
+  font-size: 13px;
+  color: var(--color-danger-text);
 }
 
 .score-toast {
@@ -322,5 +418,12 @@ function close() {
 .score-label {
   font-size: 12px;
   color: var(--color-text-secondary);
+}
+
+.host-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 24px;
 }
 </style>
