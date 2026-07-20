@@ -4,6 +4,7 @@ annotated-types==0.7.0
 anyio==4.14.2
 asyncpg==0.31.0
 async_timeout==5.0.1
+bcrypt==3.2.2
 cffi==2.1.0
 click==8.4.2
 colorama==0.4.6

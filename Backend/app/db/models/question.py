@@ -1,10 +1,14 @@
 from enum import Enum
+from typing import TYPE_CHECKING
 
 from sqlalchemy import String, SmallInteger, ForeignKey, Text, UniqueConstraint
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 from app.db.mixins import CreatedAtMixin, UpdatedAtMixin
+
+if TYPE_CHECKING:
+    from app.db.models.answer_option import AnswerOption
 
 
 class QuestionType(str, Enum):
@@ -23,3 +27,6 @@ class Question(Base, CreatedAtMixin, UpdatedAtMixin):
     order_index: Mapped[int] = mapped_column(SmallInteger, nullable=False)
     time_limit_sec: Mapped[int | None] = mapped_column(SmallInteger)
     points: Mapped[int | None] = mapped_column(SmallInteger)
+    answer_options: Mapped[list["AnswerOption"]] = relationship(
+        back_populates="question", cascade="all, delete-orphan"
+    )
