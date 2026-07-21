@@ -35,11 +35,13 @@ class UserStats(BaseModel):
     played: int
     wins: int
     created: int
+    hosted_sessions_count: int
     avg_score_percent: int
 
 
 class ParticipationHistoryItem(BaseModel):
     session_id: int
+    room_code: str
     quiz_title: str
     ended_at: datetime | None = None
     participants_count: int

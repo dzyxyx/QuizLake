@@ -5,6 +5,7 @@ import AppLayout from '@/layouts/AppLayout.vue'
 import QuizStepper from '@/components/QuizStepper.vue'
 import { useQuizzesStore } from '@/stores/quizzes'
 import { useCategoriesStore } from '@/stores/categories'
+import { useAuthStore } from '@/stores/auth'
 import type { QuizDifficulty } from '@/types'
 import { ApiError } from '@/api/client'
 
@@ -12,6 +13,7 @@ const route = useRoute()
 const router = useRouter()
 const quizzesStore = useQuizzesStore()
 const categoriesStore = useCategoriesStore()
+const auth = useAuthStore()
 
 const quizId = computed(() => (route.params.id ? Number(route.params.id) : null))
 const isEdit = computed(() => quizId.value !== null)
@@ -28,28 +30,34 @@ const isPublic = ref(false)
 
 const loading = ref(false)
 const error = ref('')
+const accessDenied = ref(false)
 
 onMounted(async () => {
   categoriesStore.fetchCategories()
   if (quizId.value !== null) {
-    const quiz = await quizzesStore.getQuiz(quizId.value)
-    title.value = quiz.title
-    description.value = quiz.description ?? ''
-    categoryId.value = quiz.category_id
-    difficulty.value = quiz.difficulty
-    timePerQuestion.value = quiz.time_per_question_sec
-    speedBonus.value = quiz.speed_bonus_enabled
-    showCorrectAnswer.value = quiz.show_correct_answer
-    allowAnswerChange.value = quiz.allow_answer_change
-    isPublic.value = quiz.is_public
+    try {
+      const quiz = await quizzesStore.getQuiz(quizId.value)
+      if (quiz.owner_id !== auth.user?.id) {
+        accessDenied.value = true
+        return
+      }
+      title.value = quiz.title
+      description.value = quiz.description ?? ''
+      categoryId.value = quiz.category_id
+      difficulty.value = quiz.difficulty
+      timePerQuestion.value = quiz.time_per_question_sec
+      speedBonus.value = quiz.speed_bonus_enabled
+      showCorrectAnswer.value = quiz.show_correct_answer
+      allowAnswerChange.value = quiz.allow_answer_change
+      isPublic.value = quiz.is_public
+    } catch {
+      accessDenied.value = true
+    }
   }
 })
 
-async function onNext() {
-  error.value = ''
-  loading.value = true
-
-  const payload = {
+function buildPayload() {
+  return {
     title: title.value,
     description: description.value || null,
     category_id: categoryId.value,
@@ -60,13 +68,37 @@ async function onNext() {
     allow_answer_change: allowAnswerChange.value,
     is_public: isPublic.value,
   }
+}
+
+async function saveIfEditing(): Promise<boolean> {
+  if (!isEdit.value || quizId.value === null) return true
+  error.value = ''
+
+  if (!title.value.trim()) {
+    error.value = 'Введите название квиза, прежде чем переходить к вопросам'
+    return false
+  }
+
+  try {
+    await quizzesStore.updateQuiz(quizId.value, buildPayload())
+    return true
+  } catch (e) {
+    error.value = e instanceof ApiError ? e.message : 'Не удалось сохранить квиз'
+    return false
+  }
+}
+
+async function onNext() {
+  error.value = ''
+  loading.value = true
 
   try {
     if (isEdit.value && quizId.value !== null) {
-      await quizzesStore.updateQuiz(quizId.value, payload)
+      const ok = await saveIfEditing()
+      if (!ok) return
       router.push({ name: 'quiz-add-questions', params: { id: quizId.value } })
     } else {
-      const quiz = await quizzesStore.createQuiz(payload)
+      const quiz = await quizzesStore.createQuiz(buildPayload())
       router.push({ name: 'quiz-add-questions', params: { id: quiz.id } })
     }
   } catch (e) {
@@ -79,10 +111,16 @@ async function onNext() {
 
 <template>
   <AppLayout active-item="my-quizzes" :active-draft-id="quizId">
-    <div class="layout-row">
-      <QuizStepper :step="1" />
+    <div v-if="accessDenied" class="card form-card">
+      <RouterLink to="/" class="exit-link">← Выйти из редактора</RouterLink>
+      <p class="error-text">Этот квиз вам не принадлежит — редактировать его нельзя.</p>
+    </div>
+
+    <div v-else class="layout-row">
+      <QuizStepper :step="1" :quiz-id="quizId" :before-leave="saveIfEditing" />
 
       <div class="card form-card">
+        <RouterLink to="/" class="exit-link">← Выйти из редактора</RouterLink>
         <h1>Основные настройки квиза</h1>
 
         <form class="form" @submit.prevent="onNext">
@@ -166,6 +204,16 @@ async function onNext() {
   flex: 1;
   padding: 32px;
   max-width: 700px;
+}
+.exit-link {
+  display: inline-block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  margin-bottom: 16px;
+}
+.exit-link:hover {
+  color: var(--color-primary);
 }
 h1 {
   font-size: 20px;

@@ -40,16 +40,33 @@ async function onSubmit() {
     return
   }
 
-  const name = displayName.value || auth.user?.nickname
-  if (!name) {
-    error.value = 'Введите имя, под которым вас увидят другие участники'
-    return
-  }
-
   loading.value = true
   try {
-    await sessionStore.loadByRoomCode(roomCode)
-    await sessionStore.join(roomCode, name)
+    const session = await sessionStore.loadByRoomCode(roomCode)
+
+    if (sessionStore.isHost) {
+      if (session.status === 'cancelled') {
+        error.value = 'Эта игра была отменена'
+        return
+      }
+      const routeName =
+        session.status === 'finished'
+          ? 'session-results'
+          : session.status === 'active'
+            ? 'session-live'
+            : 'session-waiting'
+      router.push({ name: routeName, params: { code: roomCode } })
+      return
+    }
+
+    const typedName = displayName.value.trim()
+    const name = typedName || auth.user?.nickname
+    if (!name) {
+      error.value = 'Введите имя, под которым вас увидят другие участники'
+      return
+    }
+
+    await sessionStore.join(roomCode, name, !typedName)
     router.push({ name: 'session-waiting', params: { code: roomCode } })
   } catch (e) {
     error.value = e instanceof ApiError ? e.message : 'Не удалось найти комнату с таким кодом'
@@ -69,6 +86,11 @@ async function onSubmit() {
     </template>
 
     <h2 class="title">Код комнаты</h2>
+
+    <div v-if="auth.isAuthenticated" class="identity-banner">
+      Вы вошли как <strong>{{ auth.user?.nickname }}</strong>. Оставьте поле имени пустым, чтобы
+      присоединиться под своим аккаунтом, или впишите любой ник — тогда войдёте как гость.
+    </div>
 
     <form class="form" @submit.prevent="onSubmit">
       <div class="code-row">
@@ -144,5 +166,14 @@ async function onSubmit() {
   font-size: 13px;
   color: var(--color-danger-text);
   text-align: center;
+}
+.identity-banner {
+  background: var(--color-info-bg);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  font-size: 13px;
+  text-align: center;
+  margin-bottom: 20px;
+  line-height: 1.5;
 }
 </style>

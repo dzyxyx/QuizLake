@@ -111,11 +111,13 @@ export interface UserStats {
   played: number
   wins: number
   created: number
+  hosted_sessions_count: number
   avg_score_percent: number
 }
 
 export interface ParticipationHistoryItem {
   session_id: number
+  room_code: string
   quiz_title: string
   ended_at: string | null
   participants_count: number

@@ -10,9 +10,11 @@ class ParticipantAnswer(Base):
     __tablename__ = "participant_answers"
     __table_args__ = (UniqueConstraint("participant_id", "question_id"),)
 
-    session_id: Mapped[int] = mapped_column(ForeignKey("quiz_sessions.id"), nullable=False)
-    question_id: Mapped[int] = mapped_column(ForeignKey("questions.id"), nullable=False)
-    participant_id: Mapped[int] = mapped_column(ForeignKey("session_participants.id"), nullable=False)
+    session_id: Mapped[int] = mapped_column(ForeignKey("quiz_sessions.id", ondelete="CASCADE"), nullable=False)
+    question_id: Mapped[int] = mapped_column(ForeignKey("questions.id", ondelete="CASCADE"), nullable=False)
+    participant_id: Mapped[int] = mapped_column(
+        ForeignKey("session_participants.id", ondelete="CASCADE"), nullable=False
+    )
     is_correct: Mapped[bool] = mapped_column(Boolean, default=False)
     response_time_ms: Mapped[int | None] = mapped_column(Integer)
     points_awarded: Mapped[int] = mapped_column(SmallInteger, default=0)

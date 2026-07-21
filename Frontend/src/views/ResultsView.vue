@@ -1,13 +1,16 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import AppLayout from '@/layouts/AppLayout.vue'
 import { useSessionStore } from '@/stores/session'
+import { useAuthStore } from '@/stores/auth'
 import * as quizzesApi from '@/api/quizzes'
 import type { LeaderboardEntry } from '@/types'
 
 const route = useRoute()
+const router = useRouter()
 const sessionStore = useSessionStore()
+const auth = useAuthStore()
 
 const roomCode = String(route.params.code ?? '').toUpperCase()
 const quizTitle = ref('')
@@ -44,6 +47,11 @@ const leaderboard = computed<LeaderboardEntry[]>(() => {
 
 const podium = computed(() => leaderboard.value.slice(0, 3))
 const rest = computed(() => leaderboard.value.slice(3))
+
+function onExit() {
+  sessionStore.leave()
+  router.push(auth.isAuthenticated ? { name: 'dashboard' } : { name: 'join' })
+}
 </script>
 
 <template>
@@ -93,6 +101,10 @@ const rest = computed(() => leaderboard.value.slice(3))
             </tr>
           </tbody>
         </table>
+      </div>
+
+      <div class="exit-row">
+        <button type="button" class="btn btn-primary" @click="onExit">Готово</button>
       </div>
     </div>
   </AppLayout>
@@ -172,6 +184,11 @@ h1 {
 .table-card {
   padding: 8px 0;
   text-align: left;
+}
+.exit-row {
+  display: flex;
+  justify-content: center;
+  margin-top: 32px;
 }
 table {
   width: 100%;

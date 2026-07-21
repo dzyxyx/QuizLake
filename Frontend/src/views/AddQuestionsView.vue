@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppLayout from '@/layouts/AppLayout.vue'
 import QuizStepper from '@/components/QuizStepper.vue'
@@ -35,6 +35,7 @@ const active = computed(() => questions.value[activeIndex.value] ?? null)
 const loading = ref(true)
 const saving = ref(false)
 const error = ref('')
+const removingQuestion = ref<QuestionDraft | null>(null)
 
 function typeLabel(type: QuestionType) {
   return type === 'single' ? 'Один правильный ответ' : 'Несколько правильных ответов'
@@ -53,6 +54,8 @@ function blankQuestion(): QuestionDraft {
     ],
   }
 }
+
+const accessDenied = ref(false)
 
 onMounted(async () => {
   try {
@@ -73,6 +76,8 @@ onMounted(async () => {
     if (questions.value.length === 0) {
       questions.value.push(blankQuestion())
     }
+  } catch (e) {
+    accessDenied.value = e instanceof ApiError && e.status === 403
   } finally {
     loading.value = false
   }
@@ -82,11 +87,25 @@ function addOption() {
   active.value?.answer_options.push({ option_text: '', is_correct: false })
 }
 
+function minOptionsFor(type: QuestionType) {
+  return type === 'multiple' ? 3 : 2
+}
+
 function removeOption(index: number) {
-  if (active.value && active.value.answer_options.length > 2) {
+  if (active.value && active.value.answer_options.length > minOptionsFor(active.value.question_type)) {
     active.value.answer_options.splice(index, 1)
   }
 }
+
+watch(
+  () => active.value?.question_type,
+  (type) => {
+    if (type !== 'multiple' || !active.value) return
+    while (active.value.answer_options.length < 3) {
+      active.value.answer_options.push({ option_text: '', is_correct: false })
+    }
+  },
+)
 
 function selectCorrect(index: number) {
   if (!active.value) return
@@ -103,20 +122,28 @@ function addQuestion() {
   activeIndex.value = questions.value.length - 1
 }
 
-async function removeQuestion(index: number) {
-  const question = questions.value[index]
+async function removeQuestion(question: QuestionDraft) {
+  if (questions.value.length <= 1 || removingQuestion.value) return
+
+  removingQuestion.value = question
   if (question.id) {
     try {
       await questionsApi.deleteQuestion(quizId, question.id)
     } catch (e) {
       error.value = e instanceof ApiError ? e.message : 'Не удалось удалить вопрос'
+      removingQuestion.value = null
       return
     }
   }
-  questions.value.splice(index, 1)
-  if (activeIndex.value >= questions.value.length) {
-    activeIndex.value = Math.max(0, questions.value.length - 1)
+
+  const idx = questions.value.indexOf(question)
+  if (idx !== -1) {
+    questions.value.splice(idx, 1)
+    if (activeIndex.value >= questions.value.length) {
+      activeIndex.value = Math.max(0, questions.value.length - 1)
+    }
   }
+  removingQuestion.value = null
 }
 
 async function saveActiveQuestion() {
@@ -134,6 +161,16 @@ async function saveActiveQuestion() {
   if (!active.value.answer_options.some((o) => o.is_correct)) {
     error.value = 'Отметьте хотя бы один правильный вариант'
     return
+  }
+  if (active.value.question_type === 'multiple') {
+    if (active.value.answer_options.length < 3) {
+      error.value = 'Для вопроса с несколькими правильными ответами нужно минимум 3 варианта ответа'
+      return
+    }
+    if (active.value.answer_options.filter((o) => o.is_correct).length < 2) {
+      error.value = 'Отметьте минимум 2 правильных варианта для вопроса с несколькими ответами'
+      return
+    }
   }
 
   saving.value = true
@@ -195,21 +232,38 @@ async function publishQuiz() {
 <template>
   <AppLayout active-item="my-quizzes" :active-draft-id="quizId">
     <div v-if="loading">Загрузка…</div>
+    <div v-else-if="accessDenied" class="card list-card">
+      <RouterLink to="/" class="exit-link">← Выйти из редактора</RouterLink>
+      <p class="error-text">Этот квиз вам не принадлежит — редактировать его нельзя.</p>
+    </div>
     <div v-else class="layout-row">
-      <QuizStepper :step="2" />
+      <QuizStepper :step="2" :quiz-id="quizId" />
 
       <div class="card list-card">
+        <RouterLink to="/" class="exit-link">← Выйти из редактора</RouterLink>
         <div class="list-title">Вопросы ({{ questions.length }})</div>
-        <button
+        <div
           v-for="(q, i) in questions"
           :key="q.id ?? `draft-${i}`"
           class="question-item"
           :class="{ active: i === activeIndex }"
           @click="activeIndex = i"
         >
-          <span class="q-title">{{ i + 1 }}. {{ q.question_text || '(без текста)' }}</span>
-          <span class="q-type">{{ typeLabel(q.question_type) }}<span v-if="!q.id"> · не сохранён</span></span>
-        </button>
+          <span class="q-text">
+            <span class="q-title">{{ i + 1 }}. {{ q.question_text || '(без текста)' }}</span>
+            <span class="q-type">{{ typeLabel(q.question_type) }}<span v-if="!q.id"> · не сохранён</span></span>
+          </span>
+          <button
+            v-if="questions.length > 1"
+            type="button"
+            class="remove-btn small"
+            title="Удалить вопрос"
+            :disabled="!!removingQuestion"
+            @click.stop="removeQuestion(q)"
+          >
+            ✕
+          </button>
+        </div>
         <button class="btn btn-secondary btn-block add-btn" @click="addQuestion">
           + Добавить вопрос
         </button>
@@ -233,7 +287,8 @@ async function publishQuiz() {
               type="button"
               class="remove-btn"
               title="Удалить вопрос"
-              @click="removeQuestion(activeIndex)"
+              :disabled="!!removingQuestion"
+              @click="active && removeQuestion(active)"
             >
               ✕
             </button>
@@ -276,7 +331,7 @@ async function publishQuiz() {
               :class="{ correct: opt.is_correct }"
             />
             <button
-              v-if="active.answer_options.length > 2"
+              v-if="active.answer_options.length > minOptionsFor(active.question_type)"
               type="button"
               class="remove-btn small"
               @click="removeOption(i)"
@@ -316,6 +371,16 @@ async function publishQuiz() {
   flex-direction: column;
   gap: 4px;
 }
+.exit-link {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  margin-bottom: 12px;
+}
+.exit-link:hover {
+  color: var(--color-primary);
+}
 .list-title {
   font-size: 11px;
   font-weight: 700;
@@ -326,18 +391,26 @@ async function publishQuiz() {
 }
 .question-item {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
   padding: 10px;
   border-radius: var(--radius-sm);
   text-align: left;
+  cursor: pointer;
 }
 .question-item:hover {
   background: #f5f7fb;
 }
 .question-item.active {
   background: var(--color-info-bg);
+}
+.q-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
 }
 .q-title {
   font-size: 13px;

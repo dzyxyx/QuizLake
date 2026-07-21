@@ -55,19 +55,16 @@ const router = createRouter({
       path: '/session/:code/waiting',
       name: 'session-waiting',
       component: () => import('@/views/WaitingRoomView.vue'),
-      meta: { requiresAuth: true },
     },
     {
       path: '/session/:code/live',
       name: 'session-live',
       component: () => import('@/views/LiveQuestionView.vue'),
-      meta: { requiresAuth: true },
     },
     {
       path: '/session/:code/results',
       name: 'session-results',
       component: () => import('@/views/ResultsView.vue'),
-      meta: { requiresAuth: true },
     },
     {
       path: '/profile',
@@ -84,8 +81,6 @@ const router = createRouter({
   ],
 })
 
-// Общая охрана роутов: не даём открыть закрытые страницы без токена
-// и не пускаем залогиненного пользователя обратно на /login и /register.
 router.beforeEach((to) => {
   const auth = useAuthStore()
 

@@ -7,6 +7,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useQuizzesStore } from '@/stores/quizzes'
 import { useProfileStore } from '@/stores/profile'
 import { useSessionStore } from '@/stores/session'
+import { ApiError } from '@/api/client'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -31,16 +32,22 @@ async function onLaunch(quizId: number) {
   const session = await sessionStore.createAndEnter(quizId)
   router.push({ name: 'session-waiting', params: { code: session.room_code } })
 }
+
+async function onDelete(quizId: number) {
+  try {
+    await quizzes.deleteQuiz(quizId)
+    await profile.fetchAll()
+  } catch (e) {
+    window.alert(e instanceof ApiError ? e.message : 'Не удалось удалить квиз')
+  }
+}
 </script>
 
 <template>
   <AppLayout active-item="my-quizzes">
     <header class="page-header">
       <div>
-        <h1>С возвращением, {{ auth.user?.first_name }} 👋</h1>
-        <p class="subtitle">
-          {{ profile.stats.created }} созданных квизов · {{ profile.stats.played }} сыгранных
-        </p>
+        <h1>Здравствуйте, {{ auth.user?.first_name }}</h1>
       </div>
       <div class="header-actions">
         <RouterLink to="/join" class="btn btn-secondary">🔑 Войти по коду</RouterLink>
@@ -61,6 +68,10 @@ async function onLaunch(quizId: number) {
         <div class="stat-label">Создано квизов</div>
         <div class="stat-value">{{ profile.stats.created }}</div>
       </div>
+      <div class="card stat-card">
+        <div class="stat-label">Проведено квизов</div>
+        <div class="stat-value">{{ profile.stats.hosted_sessions_count }}</div>
+      </div>
     </section>
 
     <h2 class="section-title">Мои квизы</h2>
@@ -72,6 +83,7 @@ async function onLaunch(quizId: number) {
         @edit="onEdit"
         @publish="onPublish"
         @launch="onLaunch"
+        @delete="onDelete"
       />
     </section>
     <p v-else class="empty-hint">Пока нет ни одного квиза — создайте первый.</p>
@@ -101,7 +113,7 @@ async function onLaunch(quizId: number) {
 
 .stats {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 16px;
   margin-bottom: 32px;
 }

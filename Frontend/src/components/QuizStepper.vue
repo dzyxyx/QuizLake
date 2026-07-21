@@ -1,25 +1,68 @@
 <script setup lang="ts">
-defineProps<{
-  step: 1 | 2 | 3
+import { ref } from 'vue'
+import { useRouter } from 'vue-router'
+
+const props = defineProps<{
+  step: 1 | 2
+  quizId?: number | null
+  beforeLeave?: () => boolean | Promise<boolean>
 }>()
 
+const router = useRouter()
+const navigating = ref(false)
+
 const steps = [
-  { n: 1, label: 'Основное' },
-  { n: 2, label: 'Вопросы' },
-  { n: 3, label: 'Проверка' },
+  { n: 1 as const, label: 'Основное' },
+  { n: 2 as const, label: 'Вопросы' },
 ]
+
+async function goTo(n: 1 | 2) {
+  if (n === props.step) return
+  if (n === 2 && !props.quizId) return
+  if (navigating.value) return
+
+  if (props.beforeLeave) {
+    navigating.value = true
+    try {
+      const ok = await props.beforeLeave()
+      if (!ok) return
+    } finally {
+      navigating.value = false
+    }
+  }
+
+  if (n === 1) {
+    router.push(
+      props.quizId
+        ? { name: 'quiz-edit-settings', params: { id: props.quizId } }
+        : { name: 'quiz-create-settings' },
+    )
+  } else {
+    router.push({ name: 'quiz-add-questions', params: { id: props.quizId } })
+  }
+}
+
+function isDisabled(n: 1 | 2) {
+  return (n === 2 && !props.quizId) || navigating.value
+}
 </script>
 
 <template>
   <div class="stepper">
     <template v-for="(s, i) in steps" :key="s.n">
-      <div class="step" :class="{ done: s.n < step, current: s.n === step }">
+      <button
+        type="button"
+        class="step"
+        :class="{ done: s.n < step, current: s.n === step, disabled: isDisabled(s.n) }"
+        :disabled="isDisabled(s.n)"
+        @click="goTo(s.n)"
+      >
         <span class="circle">
           <span v-if="s.n < step">✓</span>
           <span v-else>{{ s.n }}</span>
         </span>
         <span class="label">{{ s.label }}</span>
-      </div>
+      </button>
       <div v-if="i < steps.length - 1" class="connector" />
     </template>
   </div>
@@ -39,6 +82,13 @@ const steps = [
   flex-direction: column;
   align-items: center;
   gap: 6px;
+}
+.step:not(.disabled) {
+  cursor: pointer;
+}
+.step.disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 .circle {
   width: 32px;

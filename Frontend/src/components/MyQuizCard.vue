@@ -1,13 +1,20 @@
 <script setup lang="ts">
 import type { Quiz } from '@/types'
 
-defineProps<{ quiz: Quiz }>()
+const props = defineProps<{ quiz: Quiz }>()
 
 const emit = defineEmits<{
   edit: [quizId: number]
   publish: [quizId: number]
   launch: [quizId: number]
+  delete: [quizId: number]
 }>()
+
+function onDelete() {
+  if (window.confirm(`Удалить квиз «${props.quiz.title}»? Это действие необратимо.`)) {
+    emit('delete', props.quiz.id)
+  }
+}
 
 const statusLabel: Record<Quiz['status'], string> = {
   draft: 'Черновик',
@@ -23,10 +30,13 @@ const statusClass: Record<Quiz['status'], string> = {
 
 <template>
   <div class="card quiz-card">
-    <span class="badge" :class="statusClass[quiz.status]">
-      <span class="dot" />
-      {{ statusLabel[quiz.status] }}
-    </span>
+    <div class="card-top">
+      <span class="badge" :class="statusClass[quiz.status]">
+        <span class="dot" />
+        {{ statusLabel[quiz.status] }}
+      </span>
+      <button class="delete-btn" title="Удалить квиз" @click="onDelete">✕</button>
+    </div>
 
     <h3 class="quiz-title">{{ quiz.title }}</h3>
     <p class="quiz-meta">{{ quiz.time_per_question_sec }} сек/вопрос</p>
@@ -54,11 +64,29 @@ const statusClass: Record<Quiz['status'], string> = {
   flex-direction: column;
   gap: 10px;
 }
+.card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
 .badge .dot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
   background: currentColor;
+}
+.delete-btn {
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+.delete-btn:hover {
+  background: var(--color-danger-bg);
+  color: var(--color-danger-text);
 }
 .quiz-title {
   font-size: 17px;

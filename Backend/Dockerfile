@@ -1,4 +1,12 @@
-FROM ubuntu:latest
-LABEL authors="sasha"
+FROM python:3.11-slim
 
-ENTRYPOINT ["top", "-b"]
+WORKDIR /app
+
+COPY requirements/ requirements/
+RUN pip install --no-cache-dir -r requirements/prod.txt
+
+COPY . .
+
+EXPOSE 8000
+
+CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"]

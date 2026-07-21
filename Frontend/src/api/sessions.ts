@@ -17,8 +17,12 @@ export interface JoinPayload {
   avatar_url?: string | null
 }
 
-export function joinSession(roomCode: string, data: JoinPayload) {
-  return apiRequest<SessionParticipant>(`/sessions/${roomCode}/join`, { method: 'POST', body: data })
+export function joinSession(roomCode: string, data: JoinPayload, useAuth = true) {
+  return apiRequest<SessionParticipant>(`/sessions/${roomCode}/join`, {
+    method: 'POST',
+    body: data,
+    auth: useAuth,
+  })
 }
 
 export function getParticipants(sessionId: number) {

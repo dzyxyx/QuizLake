@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: quizlake_test_db
+          POSTGRES_USER: quizlake_user
+          POSTGRES_PASSWORD: quizlake_secret
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U quizlake_user -d quizlake_test_db"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    defaults:
+      run:
+        working-directory: backend
+
+    env:
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: quizlake_test_db
+      POSTGRES_USER: quizlake_user
+      POSTGRES_PASSWORD: quizlake_secret
+      PROJECT_NAME: QuizLake
+      ENVIRONMENT: test
+      DEBUG: "True"
+      SECRET_KEY: ci_test_secret_key
+      ALGORITHM: HS256
+      ACCESS_TOKEN_EXPIRE_MINUTES: "60"
+      REFRESH_TOKEN_EXPIRE_DAYS: "30"
+      ALLOWED_ORIGINS: '["http://localhost:5173"]'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - run: pip install -r requirements/dev.txt
+
+      - run: pytest -q
+
+  frontend-tests:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+
+      - run: npx vue-tsc -b
+
+      - run: npm run test

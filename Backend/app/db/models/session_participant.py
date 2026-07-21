@@ -10,7 +10,7 @@ class SessionParticipant(Base):
     __tablename__ = "session_participants"
     __table_args__ = (UniqueConstraint("session_id", "user_id"),)
 
-    session_id: Mapped[int] = mapped_column(ForeignKey("quiz_sessions.id"), nullable=False)
+    session_id: Mapped[int] = mapped_column(ForeignKey("quiz_sessions.id", ondelete="CASCADE"), nullable=False)
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     display_name: Mapped[str] = mapped_column(String(50))
     avatar_url: Mapped[str | None] = mapped_column(String(500))

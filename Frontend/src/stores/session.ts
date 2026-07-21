@@ -9,6 +9,8 @@ function participantStorageKey(sessionId: number) {
   return `quizlake_participant_${sessionId}`
 }
 
+const participantStorage = window.sessionStorage
+
 export const useSessionStore = defineStore('session', () => {
   const session = ref<QuizSession | null>(null)
   const participants = ref<SessionParticipant[]>([])
@@ -84,7 +86,7 @@ export const useSessionStore = defineStore('session', () => {
     participants.value = await sessionsApi.getParticipants(session.value.id)
     resetGameState()
 
-    const stored = localStorage.getItem(participantStorageKey(session.value.id))
+    const stored = participantStorage.getItem(participantStorageKey(session.value.id))
     myParticipantId.value = stored ? Number(stored) : null
 
     connectSocket()
@@ -100,11 +102,11 @@ export const useSessionStore = defineStore('session', () => {
     return session.value
   }
 
-  async function join(roomCode: string, displayName: string) {
-    const participant = await sessionsApi.joinSession(roomCode, { display_name: displayName })
+  async function join(roomCode: string, displayName: string, useAuth = true) {
+    const participant = await sessionsApi.joinSession(roomCode, { display_name: displayName }, useAuth)
     myParticipantId.value = participant.id
     if (session.value) {
-      localStorage.setItem(participantStorageKey(session.value.id), String(participant.id))
+      participantStorage.setItem(participantStorageKey(session.value.id), String(participant.id))
     }
     return participant
   }
@@ -144,7 +146,7 @@ export const useSessionStore = defineStore('session', () => {
       await sessionsApi.cancelSession(session.value.id)
     } else if (myParticipantId.value !== null) {
       await sessionsApi.leaveSession(session.value.id, myParticipantId.value)
-      localStorage.removeItem(participantStorageKey(session.value.id))
+      participantStorage.removeItem(participantStorageKey(session.value.id))
     }
 
     leave()

@@ -20,8 +20,22 @@ const submitError = ref('')
 const nextError = ref('')
 
 onMounted(async () => {
-  if (!sessionStore.session || sessionStore.session.room_code !== roomCode) {
-    await sessionStore.loadByRoomCode(roomCode)
+  let session = sessionStore.session
+  if (!session || session.room_code !== roomCode) {
+    session = await sessionStore.loadByRoomCode(roomCode)
+  }
+
+  if (session.status === 'finished') {
+    router.replace({ name: 'session-results', params: { code: roomCode } })
+    return
+  }
+  if (session.status === 'waiting') {
+    router.replace({ name: 'session-waiting', params: { code: roomCode } })
+    return
+  }
+  if (session.status === 'cancelled') {
+    sessionStore.leave()
+    router.replace({ name: 'join' })
   }
 })
 
@@ -123,6 +137,12 @@ async function onEndGame() {
   await sessionStore.endGame()
 }
 
+const myIdentityLabel = computed(() => {
+  if (sessionStore.isHost) return auth.user?.nickname ?? null
+  const me = sessionStore.participants.find((p) => p.id === sessionStore.myParticipantId)
+  return me?.display_name ?? null
+})
+
 function close() {
   sessionStore.leave()
   router.push(auth.isAuthenticated ? { name: 'dashboard' } : { name: 'login' })
@@ -137,6 +157,9 @@ function close() {
     </aside>
 
     <main class="live-content">
+      <div v-if="myIdentityLabel" class="identity-strip">
+        Вы в этой вкладке: <strong>{{ myIdentityLabel }}</strong>
+      </div>
       <div v-if="!question">Ожидаем вопрос…</div>
       <template v-else>
         <div class="top-row">
@@ -207,7 +230,7 @@ function close() {
           </p>
         </div>
 
-        <div v-if="lastAnswerResult" class="score-toast">
+        <div v-if="lastAnswerResult && sessionStore.reveal" class="score-toast">
           <span class="score-icon">{{ lastAnswerResult.is_correct ? '✓' : '✕' }}</span>
           <div>
             <div class="score-value">+{{ lastAnswerResult.points_awarded }} очков</div>
@@ -270,6 +293,15 @@ function close() {
   align-items: center;
   padding: 40px;
   position: relative;
+}
+
+.identity-strip {
+  width: 100%;
+  max-width: 820px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  text-align: right;
+  margin-bottom: 8px;
 }
 
 .top-row {

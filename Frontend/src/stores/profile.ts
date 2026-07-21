@@ -4,7 +4,7 @@ import type { UserStats, ParticipationHistoryItem, HostedSessionHistoryItem } fr
 import * as usersApi from '@/api/users'
 
 export const useProfileStore = defineStore('profile', () => {
-  const stats = ref<UserStats>({ played: 0, wins: 0, created: 0, avg_score_percent: 0 })
+  const stats = ref<UserStats>({ played: 0, wins: 0, created: 0, hosted_sessions_count: 0, avg_score_percent: 0 })
   const participationHistory = ref<ParticipationHistoryItem[]>([])
   const hostedHistory = ref<HostedSessionHistoryItem[]>([])
   const loading = ref(false)
@@ -25,5 +25,11 @@ export const useProfileStore = defineStore('profile', () => {
     }
   }
 
-  return { stats, participationHistory, hostedHistory, loading, fetchAll }
+  function reset() {
+    stats.value = { played: 0, wins: 0, created: 0, hosted_sessions_count: 0, avg_score_percent: 0 }
+    participationHistory.value = []
+    hostedHistory.value = []
+  }
+
+  return { stats, participationHistory, hostedHistory, loading, fetchAll, reset }
 })

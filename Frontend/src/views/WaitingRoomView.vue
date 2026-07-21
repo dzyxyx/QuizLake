@@ -3,11 +3,19 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppLayout from '@/layouts/AppLayout.vue'
 import { useSessionStore } from '@/stores/session'
+import { useAuthStore } from '@/stores/auth'
 import { ApiError } from '@/api/client'
 
 const route = useRoute()
 const router = useRouter()
 const sessionStore = useSessionStore()
+const auth = useAuthStore()
+
+const myIdentityLabel = computed(() => {
+  if (sessionStore.isHost) return auth.user?.nickname ?? null
+  const me = participants.value.find((p) => p.id === sessionStore.myParticipantId)
+  return me?.display_name ?? null
+})
 
 const roomCode = String(route.params.code ?? '').toUpperCase()
 const loading = ref(true)
@@ -15,7 +23,20 @@ const error = ref('')
 
 onMounted(async () => {
   try {
-    await sessionStore.loadByRoomCode(roomCode)
+    const session = await sessionStore.loadByRoomCode(roomCode)
+    if (session.status === 'active') {
+      router.replace({ name: 'session-live', params: { code: roomCode } })
+      return
+    }
+    if (session.status === 'finished') {
+      router.replace({ name: 'session-results', params: { code: roomCode } })
+      return
+    }
+    if (session.status === 'cancelled') {
+      sessionStore.leave()
+      router.replace({ name: 'join' })
+      return
+    }
   } catch (e) {
     error.value = e instanceof ApiError ? e.message : 'Комната не найдена'
   } finally {
@@ -90,10 +111,22 @@ async function onLeave() {
           </div>
         </div>
 
+        <p v-if="myIdentityLabel" class="identity-hint">
+          Вы в этой вкладке: <strong>{{ myIdentityLabel }}</strong>
+          <span v-if="auth.isAuthenticated"> (аккаунт)</span>
+          <span v-else> (гость)</span>
+        </p>
+
         <div v-if="participants.length" class="participants-grid">
-          <div v-for="p in participants" :key="p.id" class="participant">
+          <div
+            v-for="p in participants"
+            :key="p.id"
+            class="participant"
+            :class="{ 'is-me': p.id === sessionStore.myParticipantId }"
+          >
             <span class="avatar" />
             <div class="p-name">{{ p.display_name }}</div>
+            <div v-if="p.id === sessionStore.myParticipantId" class="p-me-tag">Это вы</div>
             <div class="p-meta">{{ p.total_score }} очков</div>
           </div>
         </div>
@@ -190,6 +223,22 @@ async function onLeave() {
   align-items: center;
   text-align: center;
   gap: 6px;
+}
+.participant.is-me {
+  border-color: var(--color-primary);
+  background: #f5f7ff;
+}
+.p-me-tag {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--color-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.identity-hint {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  margin-bottom: 16px;
 }
 .avatar {
   width: 32px;

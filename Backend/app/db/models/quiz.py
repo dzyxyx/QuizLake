@@ -23,7 +23,9 @@ class Quiz(Base, CreatedAtMixin, UpdatedAtMixin):
     __tablename__ = "quizzes"
 
     owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
-    category_id: Mapped[int| None] = mapped_column(ForeignKey("categories.id"), nullable=True)
+    category_id: Mapped[int| None] = mapped_column(
+        ForeignKey("categories.id", ondelete="SET NULL"), nullable=True
+    )
     title: Mapped[str] = mapped_column(String(200))
     description: Mapped[str | None] = mapped_column(Text)
     difficulty: Mapped[str] = mapped_column(String(50), default=Difficulty.MEDIUM)

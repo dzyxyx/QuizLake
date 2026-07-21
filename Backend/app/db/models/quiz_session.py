@@ -18,11 +18,13 @@ class QuizSessionStatus(str, Enum):
 class QuizSession(Base, CreatedAtMixin):
     __tablename__ = "quiz_sessions"
 
-    quiz_id: Mapped[int] = mapped_column(ForeignKey("quizzes.id"), nullable=False)
+    quiz_id: Mapped[int] = mapped_column(ForeignKey("quizzes.id", ondelete="CASCADE"), nullable=False)
     host_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     room_code: Mapped[str] = mapped_column(String(8), unique=True, index=True)
     status: Mapped[str] = mapped_column(String(20), default=QuizSessionStatus.WAITING, index=True)
-    current_question_id: Mapped[int | None] = mapped_column(ForeignKey("questions.id"), nullable=True)
+    current_question_id: Mapped[int | None] = mapped_column(
+        ForeignKey("questions.id", ondelete="SET NULL"), nullable=True
+    )
     current_question_started_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,

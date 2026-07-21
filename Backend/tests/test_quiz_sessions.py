@@ -18,6 +18,25 @@ async def test_create_session_success(client, ready_quiz):
     assert len(data["room_code"]) == 8
 
 
+async def test_create_session_rejects_past_scheduled_start(client, ready_quiz):
+    resp = await client.post(
+        f"/api/v1/quizzes/{ready_quiz['quiz']['id']}/sessions",
+        json={"scheduled_start_at": "2020-01-01T00:00:00Z"},
+        headers=ready_quiz["host_headers"],
+    )
+    assert resp.status_code == 400
+
+
+async def test_create_session_accepts_future_scheduled_start(client, ready_quiz):
+    resp = await client.post(
+        f"/api/v1/quizzes/{ready_quiz['quiz']['id']}/sessions",
+        json={"scheduled_start_at": "2099-01-01T00:00:00Z"},
+        headers=ready_quiz["host_headers"],
+    )
+    assert resp.status_code == 201
+    assert resp.json()["scheduled_start_at"] is not None
+
+
 async def test_get_session_by_room_code(client, created_session):
     resp = await client.get(f"/api/v1/sessions/{created_session['room_code']}")
     assert resp.status_code == 200
@@ -54,6 +73,32 @@ async def test_join_as_registered_user_twice_is_rejected(client, created_session
         f"/api/v1/sessions/{created_session['room_code']}/join",
         json={"display_name": "Player Again"},
         headers=player_headers,
+    )
+    assert resp.status_code == 400
+
+
+async def test_host_cannot_join_own_session_as_participant(client, ready_quiz, created_session):
+    resp = await client.post(
+        f"/api/v1/sessions/{created_session['room_code']}/join",
+        json={"display_name": "Host As Player"},
+        headers=ready_quiz["host_headers"],
+    )
+    assert resp.status_code == 400
+
+    participants_resp = await client.get(f"/api/v1/sessions/{created_session['id']}/participants")
+    assert participants_resp.json() == []
+
+
+async def test_join_with_duplicate_display_name_is_rejected(client, created_session):
+    resp = await client.post(
+        f"/api/v1/sessions/{created_session['room_code']}/join",
+        json={"display_name": "Guest One"},
+    )
+    assert resp.status_code == 201
+
+    resp = await client.post(
+        f"/api/v1/sessions/{created_session['room_code']}/join",
+        json={"display_name": "guest one"},
     )
     assert resp.status_code == 400
 

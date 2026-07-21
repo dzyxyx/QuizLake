@@ -8,6 +8,11 @@ async def test_create_quiz(client, host):
     assert "points_per_correct" not in data
 
 
+async def test_create_quiz_rejects_blank_title(client, host):
+    resp = await client.post("/api/v1/quizzes", json={"title": "   "}, headers=host)
+    assert resp.status_code == 400
+
+
 async def test_create_quiz_requires_auth(client):
     resp = await client.post("/api/v1/quizzes", json={"title": "No Auth Quiz"})
     assert resp.status_code == 401
@@ -71,6 +76,17 @@ async def test_update_quiz(client, host):
     resp = await client.patch(f"/api/v1/quizzes/{quiz_id}", json={"title": "New Title"}, headers=host)
     assert resp.status_code == 200
     assert resp.json()["title"] == "New Title"
+
+
+async def test_update_quiz_rejects_blank_title(client, host):
+    create_resp = await client.post("/api/v1/quizzes", json={"title": "Has A Title"}, headers=host)
+    quiz_id = create_resp.json()["id"]
+
+    resp = await client.patch(f"/api/v1/quizzes/{quiz_id}", json={"title": "   "}, headers=host)
+    assert resp.status_code == 400
+
+    unchanged = await client.get(f"/api/v1/quizzes/{quiz_id}", headers=host)
+    assert unchanged.json()["title"] == "Has A Title"
 
 
 async def test_update_quiz_forbidden_for_non_owner(client, host, auth_headers):

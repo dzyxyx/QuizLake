@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { RouterLink } from 'vue-router'
+import { RouterLink, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useQuizzesStore } from '@/stores/quizzes'
 import { useSessionStore } from '@/stores/session'
+import { ApiError } from '@/api/client'
 
-withDefaults(
+const props = withDefaults(
   defineProps<{
     activeItem?: 'active-quiz' | 'discover' | 'my-quizzes' | 'profile' | null
     activeDraftId?: number | null
@@ -16,20 +17,48 @@ withDefaults(
   },
 )
 
+const router = useRouter()
 const auth = useAuthStore()
 const quizzes = useQuizzesStore()
 const sessionStore = useSessionStore()
 
-const hasActiveSession = computed(
-  () => !!sessionStore.session && sessionStore.session.status !== 'finished',
-)
+const hasActiveSession = computed(() => {
+  const status = sessionStore.session?.status
+  return status === 'waiting' || status === 'active'
+})
 
 const activeSessionLink = computed(() => {
-  if (!sessionStore.session) return '/join'
-  return sessionStore.session.status === 'waiting'
-    ? `/session/${sessionStore.session.room_code}/waiting`
-    : `/session/${sessionStore.session.room_code}/live`
+  const session = sessionStore.session
+  if (!session) return '/join'
+  switch (session.status) {
+    case 'waiting':
+      return `/session/${session.room_code}/waiting`
+    case 'active':
+      return `/session/${session.room_code}/live`
+    case 'finished':
+      return `/session/${session.room_code}/results`
+    default:
+      return '/'
+  }
 })
+
+async function onLogout() {
+  await auth.logout()
+  router.push({ name: 'login' })
+}
+
+async function onDeleteDraft(quizId: number, title: string) {
+  if (!window.confirm(`Удалить черновик «${title}»? Это действие необратимо.`)) return
+  try {
+    await quizzes.deleteQuiz(quizId)
+  } catch (e) {
+    window.alert(e instanceof ApiError ? e.message : 'Не удалось удалить черновик')
+    return
+  }
+  if (props.activeDraftId === quizId) {
+    router.push({ name: 'dashboard' })
+  }
+}
 </script>
 
 <template>
@@ -50,45 +79,59 @@ const activeSessionLink = computed(() => {
         <span v-if="hasActiveSession" class="live-dot" />
       </RouterLink>
 
-      <RouterLink to="/discover" class="nav-item" :class="{ active: activeItem === 'discover' }">
-        <span class="nav-icon">🔍</span>
-        <span class="nav-label">Обзор</span>
-      </RouterLink>
+      <template v-if="auth.isAuthenticated">
+        <RouterLink to="/discover" class="nav-item" :class="{ active: activeItem === 'discover' }">
+          <span class="nav-icon">🔍</span>
+          <span class="nav-label">Обзор</span>
+        </RouterLink>
 
-      <RouterLink to="/" class="nav-item" :class="{ active: activeItem === 'my-quizzes' }">
-        <span class="nav-icon">▦</span>
-        <span class="nav-label">Мои квизы</span>
-      </RouterLink>
+        <RouterLink to="/" class="nav-item" :class="{ active: activeItem === 'my-quizzes' }">
+          <span class="nav-icon">▦</span>
+          <span class="nav-label">Мои квизы</span>
+        </RouterLink>
 
-      <RouterLink to="/profile" class="nav-item" :class="{ active: activeItem === 'profile' }">
-        <span class="nav-icon">👤</span>
-        <span class="nav-label">Профиль</span>
-      </RouterLink>
+        <RouterLink to="/profile" class="nav-item" :class="{ active: activeItem === 'profile' }">
+          <span class="nav-icon">👤</span>
+          <span class="nav-label">Профиль</span>
+        </RouterLink>
+      </template>
     </nav>
 
-    <div v-if="quizzes.drafts.length" class="drafts">
+    <div v-if="auth.isAuthenticated && quizzes.drafts.length" class="drafts">
       <div class="drafts-title">Черновики</div>
-      <RouterLink
-        v-for="draft in quizzes.drafts"
-        :key="draft.id"
-        :to="`/quizzes/${draft.id}/questions`"
-        class="draft-item"
-        :class="{ active: draft.id === activeDraftId }"
-      >
-        <span class="draft-dot" />
-        {{ draft.title }}
-      </RouterLink>
+      <div v-for="draft in quizzes.drafts" :key="draft.id" class="draft-row">
+        <RouterLink
+          :to="`/quizzes/${draft.id}/questions`"
+          class="draft-item"
+          :class="{ active: draft.id === activeDraftId }"
+        >
+          <span class="draft-dot" />
+          {{ draft.title }}
+        </RouterLink>
+        <button
+          type="button"
+          class="draft-delete-btn"
+          title="Удалить черновик"
+          @click="onDeleteDraft(draft.id, draft.title)"
+        >
+          ✕
+        </button>
+      </div>
     </div>
 
     <div class="spacer" />
 
-    <RouterLink to="/profile" class="user-card">
-      <span class="user-avatar">{{ (auth.user?.first_name ?? 'М')[0] }}</span>
-      <span class="user-info">
-        <span class="user-name">{{ auth.user?.first_name }} {{ auth.user?.last_name?.[0] }}.</span>
-        <span class="user-email">{{ auth.user?.email }}</span>
-      </span>
-    </RouterLink>
+    <div v-if="auth.isAuthenticated" class="user-row">
+      <RouterLink to="/profile" class="user-card">
+        <span class="user-avatar">{{ (auth.user?.first_name ?? 'М')[0] }}</span>
+        <span class="user-info">
+          <span class="user-name">{{ auth.user?.first_name }} {{ auth.user?.last_name?.[0] }}.</span>
+          <span class="user-email">{{ auth.user?.email }}</span>
+        </span>
+      </RouterLink>
+      <button type="button" class="logout-btn" title="Выйти из аккаунта" @click="onLogout">⎋</button>
+    </div>
+    <p v-else class="guest-hint">Вы играете как гость</p>
   </aside>
 </template>
 
@@ -182,6 +225,11 @@ const activeSessionLink = computed(() => {
   padding: 0 10px;
   margin-bottom: 8px;
 }
+.draft-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
 .draft-item {
   display: flex;
   align-items: center;
@@ -190,9 +238,23 @@ const activeSessionLink = computed(() => {
   border-radius: var(--radius-sm);
   font-size: 14px;
   color: var(--color-text-secondary);
+  flex: 1;
+  min-width: 0;
 }
 .draft-item:hover {
   background: #f5f7fb;
+}
+.draft-delete-btn {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+.draft-delete-btn:hover {
+  background: var(--color-danger-bg);
+  color: var(--color-danger-text);
 }
 .draft-item.active {
   background: var(--color-info-bg);
@@ -214,13 +276,20 @@ const activeSessionLink = computed(() => {
   flex: 1;
 }
 
+.user-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+}
 .user-card {
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 8px;
   border-radius: var(--radius-sm);
-  margin-top: 12px;
+  flex: 1;
+  min-width: 0;
 }
 .user-card:hover {
   background: #f5f7fb;
@@ -253,5 +322,24 @@ const activeSessionLink = computed(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.logout-btn {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  font-size: 16px;
+}
+.logout-btn:hover {
+  background: var(--color-danger-bg);
+  color: var(--color-danger-text);
+}
+.guest-hint {
+  margin-top: 12px;
+  padding: 8px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  text-align: center;
 }
 </style>

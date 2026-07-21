@@ -45,6 +45,10 @@ function formatDate(value: string | null): string {
             <strong>{{ profile.stats.created }}</strong>
           </div>
           <div class="stat-row">
+            <span>Проведено квизов</span>
+            <strong>{{ profile.stats.hosted_sessions_count }}</strong>
+          </div>
+          <div class="stat-row">
             <span>Средний результат</span>
             <strong>{{ profile.stats.avg_score_percent }}%</strong>
           </div>
@@ -69,13 +73,21 @@ function formatDate(value: string | null): string {
                 {{ formatDate(item.ended_at) }} · {{ item.participants_count }} участников
               </div>
             </div>
-            <span
-              v-if="item.final_rank"
-              class="badge"
-              :class="rankBadge[item.final_rank] ?? 'badge-info'"
-            >
-              🏅 {{ item.final_rank }} место
-            </span>
+            <div class="row-actions">
+              <span
+                v-if="item.final_rank"
+                class="badge"
+                :class="rankBadge[item.final_rank] ?? 'badge-info'"
+              >
+                🏅 {{ item.final_rank }} место
+              </span>
+              <RouterLink
+                :to="{ name: 'session-results', params: { code: item.room_code } }"
+                class="btn btn-primary small"
+              >
+                Показать итоги
+              </RouterLink>
+            </div>
           </div>
           <p v-if="!profile.participationHistory.length" class="empty-hint">
             Пока нет сыгранных квизов
@@ -186,6 +198,11 @@ function formatDate(value: string | null): string {
   font-size: 12px;
   color: var(--color-text-secondary);
   margin-top: 2px;
+}
+.row-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 .btn.small {
   padding: 8px 16px;

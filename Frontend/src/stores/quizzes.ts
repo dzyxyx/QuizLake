@@ -43,5 +43,10 @@ export const useQuizzesStore = defineStore('quizzes', () => {
     quizzes.value = quizzes.value.filter((q) => q.id !== quizId)
   }
 
-  return { quizzes, drafts, loading, fetchMyQuizzes, getQuiz, createQuiz, updateQuiz, deleteQuiz }
+  function reset() {
+    quizzes.value = []
+    loaded.value = false
+  }
+
+  return { quizzes, drafts, loading, fetchMyQuizzes, getQuiz, createQuiz, updateQuiz, deleteQuiz, reset }
 })

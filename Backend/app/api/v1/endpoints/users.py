@@ -59,7 +59,16 @@ async def get_my_stats(
     db: AsyncSession = Depends(get_db),
 ):
     created = await db.scalar(
-        select(func.count()).select_from(Quiz).where(Quiz.owner_id == current_user.id)
+        select(func.count(func.distinct(Quiz.id)))
+        .select_from(Quiz)
+        .join(QuizSession, QuizSession.quiz_id == Quiz.id)
+        .where(Quiz.owner_id == current_user.id, QuizSession.status == "finished")
+    )
+
+    hosted_sessions_count = await db.scalar(
+        select(func.count())
+        .select_from(QuizSession)
+        .where(QuizSession.host_id == current_user.id, QuizSession.status == "finished")
     )
 
     result = await db.execute(
@@ -82,7 +91,13 @@ async def get_my_stats(
 
     avg_score_percent = round(sum(percentages) / len(percentages)) if percentages else 0
 
-    return UserStats(played=played, wins=wins, created=created or 0, avg_score_percent=avg_score_percent)
+    return UserStats(
+        played=played,
+        wins=wins,
+        created=created or 0,
+        hosted_sessions_count=hosted_sessions_count or 0,
+        avg_score_percent=avg_score_percent,
+    )
 
 
 @router.get("/me/participation-history", response_model=list[ParticipationHistoryItem])
@@ -109,6 +124,7 @@ async def get_participation_history(
         items.append(
             ParticipationHistoryItem(
                 session_id=session.id,
+                room_code=session.room_code,
                 quiz_title=quiz_title,
                 ended_at=session.ended_at,
                 participants_count=participants_count or 0,

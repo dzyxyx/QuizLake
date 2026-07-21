@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, HTTPException, Depends, status
 
 from sqlalchemy import select, func
@@ -30,7 +32,17 @@ async def create_session(
 
     if quiz.status != "ready":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Квиз не готов к запуску")
-    
+
+    if session_data.scheduled_start_at is not None:
+        scheduled = session_data.scheduled_start_at
+        if scheduled.tzinfo is None:
+            scheduled = scheduled.replace(tzinfo=timezone.utc)
+        if scheduled <= datetime.now(timezone.utc):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Время старта должно быть в будущем",
+            )
+
     while True:
         code = generate_room_code()
         result = await db.execute(select(QuizSession).where(QuizSession.room_code == code))
@@ -70,6 +82,12 @@ async def join_session(
 
     user_id = current_user.id if current_user else None
 
+    if current_user is not None and session.host_id == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Вы организатор этой игры — присоединиться как участник нельзя",
+        )
+
     if current_user is not None:
         existing = await db.execute(
             select(SessionParticipant).where(
@@ -79,11 +97,25 @@ async def join_session(
         )
         if existing.scalar_one_or_none() is not None:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Вы уже в этой комнате")
-    
+
+    display_name = join_data.display_name.strip()
+
+    existing_name = await db.execute(
+        select(SessionParticipant).where(
+            SessionParticipant.session_id == session.id,
+            func.lower(SessionParticipant.display_name) == display_name.lower(),
+        )
+    )
+    if existing_name.scalar_one_or_none() is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Такой ник уже занят в этой комнате — выберите другой",
+        )
+
     new_participant = SessionParticipant(
         session_id=session.id,
         user_id=user_id,
-        display_name=join_data.display_name,
+        display_name=display_name,
         avatar_url=join_data.avatar_url,
     )
 

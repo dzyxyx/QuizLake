@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
 from app.db.models import Quiz, User, QuizSession, Question, SessionParticipant, Category
+from app.db.models.quiz import QuizStatus
 from app.schemas.quiz import QuizCreate, QuizRead, QuizUpdate, DiscoverSessionRead
 from app.api.deps import get_current_user, get_current_user_optional, get_quiz_or_404, get_owned_quiz_or_403
 
@@ -18,18 +19,21 @@ async def create_quiz(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     ):
+    if not quiz_data.title.strip():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Название квиза обязательно")
+
     new_quiz = Quiz(**quiz_data.model_dump(), owner_id=current_user.id)
-    
+
     db.add(new_quiz)
     await db.commit()
     await db.refresh(new_quiz)
-    
+
     return new_quiz
 
 
 @router.get("", response_model=list[QuizRead])
 async def get_quizzes(
-    status: str | None = None, 
+    status: str | None = None,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -37,7 +41,9 @@ async def get_quizzes(
 
     if status is not None:
         query = query.where(Quiz.status == status)
-    
+    else:
+        query = query.where(Quiz.status != QuizStatus.ARCHIVED)
+
     result = await db.execute(query)
     quizzes = result.scalars().all()
 
@@ -109,6 +115,9 @@ async def update_quiz(
 ):
     quiz = await get_owned_quiz_or_403(quiz_id, current_user, db)
 
+    if quiz_data.title is not None and not quiz_data.title.strip():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Название квиза обязательно")
+
     update_data = quiz_data.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(quiz, field, value)
@@ -127,5 +136,16 @@ async def delete_quiz(
 ):
     quiz = await get_owned_quiz_or_403(quiz_id, current_user, db)
 
-    await db.delete(quiz)
-    await db.commit()
+    has_finished_session = await db.scalar(
+        select(func.count())
+        .select_from(QuizSession)
+        .where(QuizSession.quiz_id == quiz_id, QuizSession.status == "finished")
+    )
+
+    if has_finished_session:
+        quiz.status = QuizStatus.ARCHIVED
+        quiz.is_public = False
+        await db.commit()
+    else:
+        await db.delete(quiz)
+        await db.commit()

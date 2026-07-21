@@ -14,6 +14,32 @@ from app.api.deps import get_current_user, get_owned_quiz_or_403, get_question_o
 router = APIRouter()
 
 
+def _validate_answer_options(question_type: str, answer_options: list) -> None:
+    if len(answer_options) < 2:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Нужно минимум 2 варианта ответа")
+
+    correct_count = sum(1 for o in answer_options if o.is_correct)
+    if correct_count < 1:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Отметьте хотя бы один правильный вариант")
+
+    if question_type == "multiple":
+        if len(answer_options) < 3:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Для вопроса с несколькими правильными ответами нужно минимум 3 варианта ответа",
+            )
+        if correct_count < 2:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Отметьте минимум 2 правильных варианта для вопроса с несколькими ответами",
+            )
+    elif question_type == "single" and correct_count != 1:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Для вопроса с одним правильным ответом должен быть отмечен ровно один вариант",
+        )
+
+
 @router.post("", response_model=QuestionRead, status_code=status.HTTP_201_CREATED)
 async def create_question(
     quiz_id: int,
@@ -22,6 +48,7 @@ async def create_question(
     db: AsyncSession = Depends(get_db),
 ):
     await get_owned_quiz_or_403(quiz_id, current_user, db)
+    _validate_answer_options(question_data.question_type, question_data.answer_options)
 
     question_dict = question_data.model_dump(exclude={"answer_options"})
     new_question = Question(**question_dict, quiz_id=quiz_id)
@@ -79,6 +106,8 @@ async def update_question(
         setattr(question, field, value)
 
     if question_data.answer_options is not None:
+        _validate_answer_options(question.question_type, question_data.answer_options)
+
         for option in list(question.answer_options):
             await db.delete(option)
         await db.flush()

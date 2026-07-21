@@ -20,7 +20,7 @@ class Question(Base, CreatedAtMixin, UpdatedAtMixin):
     __tablename__ = "questions"
     __table_args__ = (UniqueConstraint("quiz_id", "order_index"),)
 
-    quiz_id: Mapped[int] = mapped_column(ForeignKey("quizzes.id"), nullable=False, index=True)
+    quiz_id: Mapped[int] = mapped_column(ForeignKey("quizzes.id", ondelete="CASCADE"), nullable=False, index=True)
     question_text: Mapped[str] = mapped_column(Text)
     image_url: Mapped[str | None] = mapped_column(String(500))
     question_type: Mapped[str] = mapped_column(String(20), default=QuestionType.SINGLE)

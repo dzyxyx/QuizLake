@@ -8,5 +8,7 @@ class ParticipantAnswerOption(Base):
     __tablename__ = "participant_answer_options"
     __table_args__ = (UniqueConstraint("participant_answer_id", "option_id"),)
 
-    participant_answer_id: Mapped[int] = mapped_column(ForeignKey("participant_answers.id"), nullable=False)
-    option_id: Mapped[int] = mapped_column(ForeignKey("answer_options.id"), nullable=False)
+    participant_answer_id: Mapped[int] = mapped_column(
+        ForeignKey("participant_answers.id", ondelete="CASCADE"), nullable=False
+    )
+    option_id: Mapped[int] = mapped_column(ForeignKey("answer_options.id", ondelete="CASCADE"), nullable=False)

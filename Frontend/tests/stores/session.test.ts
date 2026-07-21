@@ -37,7 +37,64 @@ describe('session store', () => {
     vi.mocked(sessionsApi.getParticipants).mockReset()
     vi.mocked(sessionsApi.leaveSession).mockReset()
     vi.mocked(sessionsApi.cancelSession).mockReset()
+    vi.mocked(sessionsApi.joinSession).mockReset()
     vi.mocked(useQuizSocket).mockReset()
+  })
+
+  it('stores the joined participant id in sessionStorage, not localStorage', async () => {
+    mockSocketFactory()
+    vi.mocked(sessionsApi.getSessionByCode).mockResolvedValue(baseSession)
+    vi.mocked(sessionsApi.getParticipants).mockResolvedValue([])
+    vi.mocked(sessionsApi.joinSession).mockResolvedValue({
+      id: 5,
+      session_id: 42,
+      user_id: null,
+      display_name: 'Alex',
+      avatar_url: null,
+      total_score: 0,
+      correct_answers_count: 0,
+      final_rank: null,
+      is_connected: true,
+      joined_at: '2026-07-20T00:00:00Z',
+      left_at: null,
+    })
+
+    const store = useSessionStore()
+    await store.loadByRoomCode('ABCD1234')
+    await store.join('ABCD1234', 'Alex')
+
+    expect(store.myParticipantId).toBe(5)
+    expect(sessionStorage.getItem('quizlake_participant_42')).toBe('5')
+    expect(localStorage.getItem('quizlake_participant_42')).toBeNull()
+  })
+
+  it('forwards useAuth=false to joinSession when the caller explicitly requests a guest join', async () => {
+    mockSocketFactory()
+    vi.mocked(sessionsApi.getSessionByCode).mockResolvedValue(baseSession)
+    vi.mocked(sessionsApi.getParticipants).mockResolvedValue([])
+    vi.mocked(sessionsApi.joinSession).mockResolvedValue({
+      id: 9,
+      session_id: 42,
+      user_id: null,
+      display_name: 'Guest',
+      avatar_url: null,
+      total_score: 0,
+      correct_answers_count: 0,
+      final_rank: null,
+      is_connected: true,
+      joined_at: '2026-07-20T00:00:00Z',
+      left_at: null,
+    })
+
+    const store = useSessionStore()
+    await store.loadByRoomCode('ABCD1234')
+    await store.join('ABCD1234', 'Guest', false)
+
+    expect(sessionsApi.joinSession).toHaveBeenCalledWith(
+      'ABCD1234',
+      { display_name: 'Guest' },
+      false,
+    )
   })
 
   it('loads a session by room code and connects the socket', async () => {

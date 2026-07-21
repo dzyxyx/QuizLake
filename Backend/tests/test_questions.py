@@ -63,6 +63,80 @@ async def test_create_question_duplicate_order_index(client, host):
     assert resp.status_code == 400
 
 
+async def test_create_multiple_choice_requires_at_least_3_options(client, host):
+    quiz_id = await _create_quiz(client, host)
+    resp = await client.post(
+        f"/api/v1/quizzes/{quiz_id}/questions",
+        json={
+            "question_text": "Which are fruits?",
+            "question_type": "multiple",
+            "order_index": 1,
+            "answer_options": [
+                {"option_text": "Apple", "is_correct": True, "order_index": 1},
+                {"option_text": "Carrot", "is_correct": True, "order_index": 2},
+            ],
+        },
+        headers=host,
+    )
+    assert resp.status_code == 400
+
+
+async def test_create_multiple_choice_requires_at_least_2_correct(client, host):
+    quiz_id = await _create_quiz(client, host)
+    resp = await client.post(
+        f"/api/v1/quizzes/{quiz_id}/questions",
+        json={
+            "question_text": "Which are fruits?",
+            "question_type": "multiple",
+            "order_index": 1,
+            "answer_options": [
+                {"option_text": "Apple", "is_correct": True, "order_index": 1},
+                {"option_text": "Carrot", "is_correct": False, "order_index": 2},
+                {"option_text": "Potato", "is_correct": False, "order_index": 3},
+            ],
+        },
+        headers=host,
+    )
+    assert resp.status_code == 400
+
+
+async def test_create_multiple_choice_with_3_options_and_2_correct_succeeds(client, host):
+    quiz_id = await _create_quiz(client, host)
+    resp = await client.post(
+        f"/api/v1/quizzes/{quiz_id}/questions",
+        json={
+            "question_text": "Which are fruits?",
+            "question_type": "multiple",
+            "order_index": 1,
+            "answer_options": [
+                {"option_text": "Apple", "is_correct": True, "order_index": 1},
+                {"option_text": "Banana", "is_correct": True, "order_index": 2},
+                {"option_text": "Potato", "is_correct": False, "order_index": 3},
+            ],
+        },
+        headers=host,
+    )
+    assert resp.status_code == 201
+
+
+async def test_create_single_choice_requires_exactly_one_correct(client, host):
+    quiz_id = await _create_quiz(client, host)
+    resp = await client.post(
+        f"/api/v1/quizzes/{quiz_id}/questions",
+        json={
+            "question_text": "Capital of France?",
+            "question_type": "single",
+            "order_index": 1,
+            "answer_options": [
+                {"option_text": "Paris", "is_correct": True, "order_index": 1},
+                {"option_text": "Lyon", "is_correct": True, "order_index": 2},
+            ],
+        },
+        headers=host,
+    )
+    assert resp.status_code == 400
+
+
 async def test_list_questions_ordered(client, host):
     quiz_id = await _create_quiz(client, host)
     for order_index, text in [(2, "Second"), (1, "First")]:
